@@ -38,7 +38,8 @@ def test_every_parameter_token_in_a_pattern_is_declared():
 def test_alert_message_names_the_rule_and_links_its_runbook():
     rule = _rule("remote-exec")
     message = catalog.message_template(rule, "https://example.com/runbook.md")
-    assert message.splitlines()[0] == "[aws-breach-alarms] HIGH R3 remote-exec: " + rule["title"]
+    assert message.splitlines()[0] == "HIGH R3 remote-exec: " + rule["title"]
+    assert "aws-breach-alarms" in message.splitlines()[1]
     assert "https://example.com/runbook.md#r3-remote-exec" in message
     assert "<eventName>" in message and "<sourceIPAddress>" in message
 
@@ -57,3 +58,9 @@ def test_every_alert_links_to_an_existing_runbook_section_in_both_languages():
         headings = {line[3:].strip().lower().replace(" ", "-") for line in (docs / name).read_text().splitlines() if line.startswith("## ")}
         for rule in catalog.load_rules():
             assert catalog.anchor(rule) in headings, f"{name} lacks a section for {rule['id']} {rule['slug']}"
+
+
+def test_alert_message_is_plain_text_for_eventbridge():
+    # EventBridge parses an InputTemplate starting with "[" or "{" as JSON and rejects the target.
+    for rule in catalog.load_rules():
+        assert catalog.message_template(rule, "https://example.com")[0] not in "[{\"", rule["slug"]

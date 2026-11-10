@@ -186,7 +186,8 @@ CloudTrail 이벤트는 **그 이벤트가 기록된 리전의 버스로만** �
 EventBridge 대상에는 SNS 메일 제목을 정할 수 없다(기본값 "AWS Notification Message"). 그래서 **본문 첫 줄을 사실상의 제목**으로 쓴다.
 
 ```
-[aws-breach-alarms] HIGH R3 remote-exec
+HIGH R3 remote-exec: Remote command execution by an untrusted principal
+Alert from aws-breach-alarms
 What : ssm.amazonaws.com SendCommand
 Who  : arn:aws:sts::123456789012:assumed-role/app-server-role/i-0abc...
 From : 198.51.100.7 (us-east-1)
@@ -199,7 +200,8 @@ Runbook: https://github.com/<org>/aws-breach-alarms/blob/main/docs/runbook.md#r3
 
 - 제목, 심각도, "Why it matters", 런북 링크는 규칙 메타데이터에서 고정 문자열로 넣는다.
 - 나머지는 `InputPathsMap`으로 뽑는다(`$.detail.eventName` 등).
-- 경로가 없는 필드는 빈 값으로 나온다.
+- 경로가 없는 필드는 `null`로 나온다.
+- 본문은 `[`나 `{`로 시작하면 안 된다. EventBridge가 JSON으로 해석해 대상 생성을 거부한다.
 
 ## 7. 설정값
 

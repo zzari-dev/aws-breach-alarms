@@ -186,7 +186,8 @@ Each rule lives in one file, `rules/<id>.json`, containing:
 EventBridge cannot set the SNS email subject (it defaults to "AWS Notification Message"). The **first line of the body acts as the subject**.
 
 ```
-[aws-breach-alarms] HIGH R3 remote-exec
+HIGH R3 remote-exec: Remote command execution by an untrusted principal
+Alert from aws-breach-alarms
 What : ssm.amazonaws.com SendCommand
 Who  : arn:aws:sts::123456789012:assumed-role/app-server-role/i-0abc...
 From : 198.51.100.7 (us-east-1)
@@ -199,7 +200,8 @@ Runbook: https://github.com/<org>/aws-breach-alarms/blob/main/docs/runbook.md#r3
 
 - Title, severity, "Why it matters", and the runbook link are static strings from rule metadata.
 - The other fields come from `InputPathsMap` (`$.detail.eventName`, …).
-- Missing paths render empty.
+- Missing paths render as `null`.
+- The body must not start with `[` or `{`: EventBridge would parse it as JSON and reject the target.
 
 ## 7. Configuration
 

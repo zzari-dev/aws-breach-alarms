@@ -12,7 +12,8 @@
     "account": "$.account"
   },
   "template": [
-    "[aws-breach-alarms] {severity} {id} {slug}: {title}",
+    "{severity} {id} {slug}: {title}",
+    "Alert from aws-breach-alarms",
     "",
     "What : <eventSource> <eventName>",
     "Who  : <principal> (<principalType>)",
