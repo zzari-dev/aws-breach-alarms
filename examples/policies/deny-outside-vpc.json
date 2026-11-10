@@ -1,0 +1,16 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DenyUseOutsideTheVpc",
+      "Effect": "Deny",
+      "Action": "*",
+      "Resource": "*",
+      "Condition": {
+        "StringNotEqualsIfExists": { "aws:SourceVpc": ["vpc-0123456789abcdef0"] },
+        "NotIpAddressIfExists": { "aws:SourceIp": ["203.0.113.10/32"] },
+        "BoolIfExists": { "aws:ViaAWSService": "false" }
+      }
+    }
+  ]
+}

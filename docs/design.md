@@ -1,6 +1,6 @@
 # aws-breach-alarms — Design
 
-- Status: In review (v0.1)
+- Status: Implemented (v0.1)
 - License: MIT
 - Korean: [design.ko.md](design.ko.md)
 - Background: [Lessons learned](lessons-learned.md)
@@ -89,7 +89,8 @@ Each rule lives in one file, `rules/<id>.json`, containing:
 | R2 | `role-offsite` | High | ALL | Monitored role used from a non-allowed source |
 | R3 | `remote-exec` | High | ENABLED | Remote command execution by a non-trusted principal |
 | R4 | `iam-persistence` | High | ENABLED | IAM backdoors |
-| R5 | `defense-evasion` | High | ENABLED | Disabling logging, detection, or these alarms |
+| R5 | `defense-evasion` | High | ENABLED | Disabling logging or detection |
+| R5b | `alarm-tamper` | High | ENABLED | Tampering with these alarms |
 | R6 | `exfil-prep` | High | ENABLED | Preparing to share data externally |
 | R7 | `console-signin` | High/Medium | ENABLED | Root sign-in, failed sign-in, sign-in without MFA |
 | R8 | `waf-spike` | Medium | (metric alarm) | Spike in blocks on a chosen WAF rule |
@@ -104,18 +105,21 @@ Each rule lives in one file, `rules/<id>.json`, containing:
     "source": [{ "prefix": "aws." }],
     "detail-type": ["AWS API Call via CloudTrail"],
     "detail": {
-      "userIdentity": { "arn": [{ "wildcard": "arn:aws:sts::${account_id}:assumed-role/${role_name}/*" }] },
+      "userIdentity": {
+        "type": ["AssumedRole"],
+        "sessionContext": { "sessionIssuer": { "userName": "@@monitored_role_names@@" } }
+      },
       "errorCode": ["AccessDenied", "AccessDeniedException", "Client.UnauthorizedOperation", "UnauthorizedOperation"]
     }
   }
   ```
-- Each monitored role adds one `arn` value (OR).
+- Matching on `sessionIssuer.userName` takes the role names as a plain list, which works the same in Terraform and CloudFormation.
 
 ### R2 `role-offsite`: monitored role used from a non-allowed source
 - **Match**: a session of a monitored role whose `sourceIPAddress` matches none of the allowed patterns.
 - **Allowed pattern examples**: NAT public IPs, private IPs seen through VPC endpoints (`10.*`), AWS services calling on your behalf (`*.amazonaws.com`), `AWS Internal`.
   ```json
-  "sourceIPAddress": [{ "anything-but": { "wildcard": ${allowed_source_patterns} } }]
+  "sourceIPAddress": [{ "anything-but": { "wildcard": "@@allowed_source_patterns@@" } }]
   ```
 - **Why**: in the real incident, the attacker's first move was calling `GetCallerIdentity` with the stolen credentials from an outside IP. Unlike R1, this rule works **without** a deny policy.
 - **Caveats**:
@@ -126,11 +130,11 @@ Each rule lives in one file, `rules/<id>.json`, containing:
 ### R3 `remote-exec`: remote command execution
 - **Match**: `ssm:SendCommand`, `ssm:StartSession`, `ssm:ResumeSession`, or `ecs:ExecuteCommand` called by a non-trusted principal.
   ```json
-  "userIdentity": { "arn": [{ "anything-but": { "wildcard": ${trusted_principal_patterns} } }] }
+  "userIdentity": { "arn": [{ "anything-but": { "wildcard": "@@operator_principal_patterns@@" } }] }
   ```
-- **Default trusted principals**: `arn:aws:sts::${account_id}:assumed-role/AWSReservedSSO_*`, `arn:aws:sts::${account_id}:assumed-role/AWSServiceRoleForAmazonSSM/*`.
+- **Default operators** (`operator_principal_patterns`): `arn:aws:sts::*:assumed-role/AWSReservedSSO_*`, `arn:aws:sts::*:assumed-role/AWSServiceRoleForAmazonSSM/*`.
 - **Why**: in the real incident, the attacker ran about 190 SSM commands and about 20 ECS Exec sessions with the stolen server role.
-- **To verify**: how `anything-but` treats events without `userIdentity.arn` (`type: AWSService`). Tests will settle it.
+- **Verified**: events without `userIdentity.arn` (`type: AWSService`) do not match, in both event-ruler and the EventBridge API.
 
 ### R4 `iam-persistence`: IAM backdoors (us-east-1)
 - **Match**: any of the following (`eventSource: iam.amazonaws.com`) called by a non-trusted principal:
@@ -139,7 +143,7 @@ Each rule lives in one file, `rules/<id>.json`, containing:
   - `CreateRole`, `UpdateAssumeRolePolicy`, `CreatePolicyVersion`, `SetDefaultPolicyVersion`, `AddUserToGroup`
   - `DeactivateMFADevice`, `DeleteVirtualMFADevice`
   - `CreateOpenIDConnectProvider`, `CreateSAMLProvider`
-- **Trusted principals**: add deployment pipelines (Terraform/CI roles) to reduce noise. The default is empty, so every change alerts.
+- **Deployers** (`deployer_principal_patterns`, shared with R6): add Terraform/CI roles to reduce noise. The default is empty, so every change alerts.
 
 ### R5 `defense-evasion`: disabling logging, detection, or these alarms
 - **Match**: any of the following:
@@ -151,17 +155,18 @@ Each rule lives in one file, `rules/<id>.json`, containing:
   - **Self-protection**:
     - `events:DeleteRule`, `DisableRule`, `RemoveTargets`, `PutRule`, `PutTargets` on rules named `${name_prefix}*`
     - `sns:DeleteTopic`, `Unsubscribe`, `SetTopicAttributes`, `RemovePermission` on our topic
-- **Limitation**: the rule being deleted may not process its own deletion event. Self-protection therefore lives in a separate rule (`R5b`), so an attacker has to remove more than one rule at once.
+- **Limitation**: the rule being deleted may not process its own deletion event. Self-protection therefore lives in a separate rule, R5b `alarm-tamper`, so an attacker has to remove more than one rule at once.
 
 ### R6 `exfil-prep`: preparing to share data externally
 - **Match**: any of the following:
   - Snapshot and image sharing: EC2 `ModifySnapshotAttribute`, `ModifyImageAttribute`; RDS `ModifyDBSnapshotAttribute`, `ModifyDBClusterSnapshotAttribute`
   - S3 exposure: `PutBucketPolicy`, `PutBucketAcl`, `DeleteBucketPolicy`, `PutBucketPublicAccessBlock`, `DeletePublicAccessBlock`, `PutAccountPublicAccessBlock` (s3control)
   - KMS: `ScheduleKeyDeletion`, `DisableKey`, `PutKeyPolicy`
+- Changes by `deployer_principal_patterns` are excluded.
 - **v0.2**: narrow snapshot sharing to "external account added" only.
 
 ### R7 `console-signin`: console sign-in (sign-in regions)
-- `detail-type: "AWS Console Sign In via CloudTrail"`, `eventName: ConsoleLogin`
+- One rule with three OR conditions. `detail-type` lists both spellings AWS docs use (`AWS Console Sign In via CloudTrail`, `AWS Console Signin via CloudTrail`). `eventName: ConsoleLogin`.
   - **R7a root sign-in** (High): `userIdentity.type = Root`. Alerts on both success and failure.
   - **R7b failed sign-in** (Medium): `responseElements.ConsoleLogin = Failure`.
   - **R7c sign-in without MFA** (Medium): `additionalEventData.MFAUsed = No` with `userIdentity.type = IAMUser`.
@@ -173,7 +178,7 @@ Each rule lives in one file, `rules/<id>.json`, containing:
 - Each `waf_alarms` entry creates one CloudWatch alarm ($0.10/month).
 
 ### H1 `delivery-failure`: watching the pipeline itself
-- **Match**: `AWS/Events FailedInvocations` for our rules > 0, or DLQ `ApproximateNumberOfMessagesVisible` > 0.
+- **Match**: the home DLQ's `ApproximateNumberOfMessagesVisible` > 0. Every failed delivery lands in the DLQ, so one alarm covers all rules.
 - **Why**: catches the case where detection worked but the alert never arrived.
 
 ## 6. Alert message
@@ -207,8 +212,10 @@ Runbook: https://github.com/<org>/aws-breach-alarms/blob/main/docs/runbook.md#r3
 | `enabled_rules` | list(string) | Default set for the region's role | Rule IDs to create |
 | `monitored_role_names` | list(string) | `[]` | Roles for R1/R2. If empty, R1/R2 are skipped |
 | `allowed_source_patterns` | list(string) | `[]` | R2 allowed-source wildcards |
-| `trusted_principal_patterns` | list(string) | SSO and SSM service roles | Principals excluded from R3/R4 |
-| `waf_alarms` | list(object) | `[]` | R8: `{ web_acl, rule, region, threshold }` |
+| `operator_principal_patterns` | list(string) | SSO and SSM State Manager roles | Principals allowed to run remote commands (R3) |
+| `deployer_principal_patterns` | list(string) | `[]` | Principals whose IAM/sharing changes are expected (R4, R6) |
+| `runbook_url` | string | this repo's runbook | Base URL linked from alerts |
+| `waf_alarms` | list(object) | `[]` | R8: `{ web_acl, rule, threshold }` |
 | `kms_key_arn` | string | `null` | Optional key for SNS/SQS encryption |
 | `tags` | map(string) | `{}` | Common tags |
 
@@ -216,7 +223,8 @@ Runbook: https://github.com/<org>/aws-breach-alarms/blob/main/docs/runbook.md#r3
 
 **CloudFormation**:
 - Uses the same parameters. Lists are `CommaDelimitedList`.
-- Conditions such as `Mode` and `EnableR1` switch resources on and off.
+- One `Enable<Slug>` parameter per rule (e.g. `EnableConsoleSignin`) switches rules on and off.
+- One alert email (`AlertEmail`) and one WAF alarm (`WafWebAclName`, `WafRuleName`, `WafThreshold`), because templates cannot loop. Add more subscriptions to the output topic.
 - For multiple regions, use StackSets or one stack per region.
 
 ## 8. Noise and tuning
@@ -245,19 +253,21 @@ Runbook: https://github.com/<org>/aws-breach-alarms/blob/main/docs/runbook.md#r3
 ```
 aws-breach-alarms/
 ├─ rules/                     # Source of truth: rule metadata + pattern templates
-├─ terraform/                 # Module (reads rules/*.json via file() + jsondecode())
-│  └─ examples/{single-region,multi-region}/
-├─ cloudformation/template.yaml        # Generated by scripts/build_cfn.py — do not edit
-├─ scripts/build_cfn.py
+├─ rules/defaults.json, rules/message.json   # shared defaults and alert message format
+├─ *.tf                       # Terraform module at the repo root (reads rules/ via file())
+├─ cloudformation/template.json        # Generated by scripts/build_cfn.py — do not edit
+├─ scripts/{catalog.py, build_cfn.py, verify_aws.py, fetch_ruler.sh}
+├─ examples/terraform/{single-region,multi-region}/
 ├─ examples/policies/deny-outside-vpc.json
 ├─ tests/
 │  ├─ events/<rule>/{match,nomatch}/*.json   # Anonymized CloudTrail events
-│  └─ ...
+│  ├─ ruler/Matcher.java      # runs aws/event-ruler
+│  └─ test_*.py
 ├─ docs/
 │  ├─ design.md, design.ko.md
 │  ├─ lessons-learned.md, lessons-learned.ko.md
-│  └─ runbook.md          # Per-rule response guide
-├─ README.md, README.ko.md, LICENSE, SECURITY.md, CONTRIBUTING.md, CHANGELOG.md
+│  └─ runbook.md, runbook.ko.md   # Per-rule response guide
+├─ README.md, README.ko.md, LICENSE, SECURITY.md, CONTRIBUTING.md, CHANGELOG.md, Makefile
 └─ .github/workflows/ci.yml
 ```
 
@@ -267,7 +277,7 @@ aws-breach-alarms/
    - **Engine**: CI runs [`aws/event-ruler`](https://github.com/aws/event-ruler), the open-source matching library behind EventBridge. The goal is the same verdicts, offline, without credentials.
    - **Cross-check**: maintainers run the same fixtures through `aws events test-event-pattern` (`make verify-aws`) to confirm parity. This needs credentials but is free and creates no resources.
    - **Fixtures**: shaped like the real incident's events, with account IDs and IPs replaced by documentation values.
-2. **Generated-artifact test**: CI regenerates the CloudFormation template with `build_cfn.py` and fails if it differs from the committed `template.yaml`.
+2. **Generated-artifact test**: CI regenerates the CloudFormation template with `build_cfn.py` and fails if it differs from the committed `template.json`.
 3. **Static checks**: `terraform fmt -check`, `terraform validate`, `terraform test` (mock provider), `cfn-lint`, `gitleaks`.
 4. **Deployment check (before each release, test account)**:
    - Trigger every rule safely and confirm an email arrives (for R4, create and delete a temporary IAM user).
@@ -314,6 +324,9 @@ aws-breach-alarms/
 | D3 | Alerts from a single home region | One subscription and one place to manage |
 | D4 | event-ruler for pattern tests | Same verdicts as the real engine, without credentials |
 | D5 | Separate R1 and R2 | Works both for teams with a deny policy and teams without one |
+| D6 | Terraform module at the repo root | A module in a subfolder cannot read `rules/` when sourced by path |
+| D7 | CloudFormation as JSON | Generated with the standard library only; no YAML tags to escape |
+| D8 | No data sources in the module | The account ID comes from created ARNs, so tests can plan offline |
 
 ## 16. Roadmap
 

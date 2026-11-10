@@ -1,6 +1,6 @@
 # aws-breach-alarms 설계 문서
 
-- 상태: 검토 중 (v0.1)
+- 상태: 구현 완료 (v0.1)
 - 라이선스: MIT
 - 영문: [design.md](design.md)
 - 배경: [침해사고 교훈](lessons-learned.ko.md)
@@ -89,7 +89,8 @@ CloudTrail 이벤트는 **그 이벤트가 기록된 리전의 버스로만** �
 | R2 | `role-offsite` | 높음 | ALL | 감시 역할을 허용되지 않은 출발지에서 사용 |
 | R3 | `remote-exec` | 높음 | ENABLED | 허용 주체가 아닌 원격 명령 실행 |
 | R4 | `iam-persistence` | 높음 | ENABLED | IAM 백도어 생성 |
-| R5 | `defense-evasion` | 높음 | ENABLED | 로깅·탐지·알람 무력화 |
+| R5 | `defense-evasion` | 높음 | ENABLED | 로깅·탐지 무력화 |
+| R5b | `alarm-tamper` | 높음 | ENABLED | 이 알람 자체의 변조 |
 | R6 | `exfil-prep` | 높음 | ENABLED | 데이터 외부 공유 준비 |
 | R7 | `console-signin` | 높음/중간 | ENABLED | 루트 로그인, 로그인 실패, MFA 없는 로그인 |
 | R8 | `waf-spike` | 중간 | (지표 알람) | WAF 특정 규칙 차단 급증 |
@@ -104,18 +105,21 @@ CloudTrail 이벤트는 **그 이벤트가 기록된 리전의 버스로만** �
     "source": [{ "prefix": "aws." }],
     "detail-type": ["AWS API Call via CloudTrail"],
     "detail": {
-      "userIdentity": { "arn": [{ "wildcard": "arn:aws:sts::${account_id}:assumed-role/${role_name}/*" }] },
+      "userIdentity": {
+        "type": ["AssumedRole"],
+        "sessionContext": { "sessionIssuer": { "userName": "@@monitored_role_names@@" } }
+      },
       "errorCode": ["AccessDenied", "AccessDeniedException", "Client.UnauthorizedOperation", "UnauthorizedOperation"]
     }
   }
   ```
-- 감시 역할마다 `arn` 값을 하나씩 추가한다(OR 조건).
+- `sessionIssuer.userName`으로 맞추면 역할 이름을 목록 그대로 넣을 수 있어 Terraform과 CloudFormation에서 똑같이 동작한다.
 
 ### R2 `role-offsite` — 감시 역할을 허용되지 않은 출발지에서 사용
 - **조건**: 감시 역할 세션의 `sourceIPAddress`가 허용 패턴에 없음
 - **허용 패턴 예**: NAT 공인 IP, VPC 엔드포인트를 거친 사설 IP(`10.*`), AWS 서비스 대리 호출(`*.amazonaws.com`), `AWS Internal`
   ```json
-  "sourceIPAddress": [{ "anything-but": { "wildcard": ${allowed_source_patterns} } }]
+  "sourceIPAddress": [{ "anything-but": { "wildcard": "@@allowed_source_patterns@@" } }]
   ```
 - **왜**: 실제 사고에서 공격자가 처음 한 일은 외부 IP에서 탈취한 자격증명으로 `GetCallerIdentity`를 호출하는 것이었다. R1과 달리 **deny 정책이 없어도** 잡는다.
 - **주의**:
@@ -126,11 +130,11 @@ CloudTrail 이벤트는 **그 이벤트가 기록된 리전의 버스로만** �
 ### R3 `remote-exec` — 원격 명령 실행
 - **조건**: `ssm:SendCommand`, `ssm:StartSession`, `ssm:ResumeSession`, `ecs:ExecuteCommand`를 허용 주체가 아닌 주체가 호출
   ```json
-  "userIdentity": { "arn": [{ "anything-but": { "wildcard": ${trusted_principal_patterns} } }] }
+  "userIdentity": { "arn": [{ "anything-but": { "wildcard": "@@operator_principal_patterns@@" } }] }
   ```
-- **허용 주체 기본값**: `arn:aws:sts::${account_id}:assumed-role/AWSReservedSSO_*`, `arn:aws:sts::${account_id}:assumed-role/AWSServiceRoleForAmazonSSM/*`
+- **운영 주체 기본값**(`operator_principal_patterns`): `arn:aws:sts::*:assumed-role/AWSReservedSSO_*`, `arn:aws:sts::*:assumed-role/AWSServiceRoleForAmazonSSM/*`
 - **왜**: 실제 사고에서 공격자는 탈취한 서버 역할로 SSM 명령을 약 190번, ECS Exec를 약 20번 실행했다.
-- **확인 필요**: `userIdentity.arn`이 없는 이벤트(`type: AWSService`)를 `anything-but`이 어떻게 판정하는지. 테스트로 확정한다.
+- **확인 완료**: `userIdentity.arn`이 없는 이벤트(`type: AWSService`)는 걸리지 않는다. event-ruler와 EventBridge API 모두 같다.
 
 ### R4 `iam-persistence` — IAM 백도어 생성 (us-east-1)
 - **조건**: 아래 이벤트(`eventSource: iam.amazonaws.com`)를 허용 주체가 아닌 주체가 호출
@@ -139,7 +143,7 @@ CloudTrail 이벤트는 **그 이벤트가 기록된 리전의 버스로만** �
   - `CreateRole`, `UpdateAssumeRolePolicy`, `CreatePolicyVersion`, `SetDefaultPolicyVersion`, `AddUserToGroup`
   - `DeactivateMFADevice`, `DeleteVirtualMFADevice`
   - `CreateOpenIDConnectProvider`, `CreateSAMLProvider`
-- **허용 주체**: 배포 파이프라인(Terraform 실행 역할 등)을 넣어 소음을 줄인다. 기본값은 비어 있어서 모든 변경을 알린다.
+- **배포 주체**(`deployer_principal_patterns`, R6과 공유): Terraform·CI 역할을 넣어 소음을 줄인다. 기본값은 비어 있어서 모든 변경을 알린다.
 
 ### R5 `defense-evasion` — 로깅·탐지·알람 무력화
 - **조건**: 아래 이벤트
@@ -151,17 +155,18 @@ CloudTrail 이벤트는 **그 이벤트가 기록된 리전의 버스로만** �
   - **이 프로젝트 자체 보호**:
     - `events:DeleteRule`, `DisableRule`, `RemoveTargets`, `PutRule`, `PutTargets` 중 이름이 `${name_prefix}`로 시작하는 규칙
     - `sns:DeleteTopic`, `Unsubscribe`, `SetTopicAttributes`, `RemovePermission` 중 우리 토픽 대상
-- **한계**: 규칙을 지우는 바로 그 이벤트는 지워지는 규칙이 처리하지 못할 수 있다. 그래서 자체 보호 패턴은 별도 규칙(`R5b`)으로 나눠, 공격자가 한 번에 모든 규칙을 지우기 어렵게 한다.
+- **한계**: 규칙을 지우는 바로 그 이벤트는 지워지는 규칙이 처리하지 못할 수 있다. 그래서 자체 보호 패턴은 별도 규칙 R5b `alarm-tamper`로 나눠, 공격자가 한 번에 모든 규칙을 지우기 어렵게 한다.
 
 ### R6 `exfil-prep` — 데이터 외부 공유 준비
 - **조건**: 아래 이벤트
   - 스냅샷·이미지 공유: EC2 `ModifySnapshotAttribute`, `ModifyImageAttribute`, RDS `ModifyDBSnapshotAttribute`, `ModifyDBClusterSnapshotAttribute`
   - S3 공개: `PutBucketPolicy`, `PutBucketAcl`, `DeleteBucketPolicy`, `PutBucketPublicAccessBlock`, `DeletePublicAccessBlock`, `PutAccountPublicAccessBlock`(s3control)
   - KMS: `ScheduleKeyDeletion`, `DisableKey`, `PutKeyPolicy`
+- `deployer_principal_patterns`의 변경은 제외한다.
 - **v0.2**: 스냅샷 공유 중 "외부 계정 추가"만 골라내는 정밀 필터
 
 ### R7 `console-signin` — 콘솔 로그인 (로그인 리전)
-- `detail-type: "AWS Console Sign In via CloudTrail"`, `eventName: ConsoleLogin`
+- 세 조건을 OR로 묶은 규칙 하나다. AWS 문서에 두 가지 표기가 있어 `detail-type`에 둘 다 넣었다(`AWS Console Sign In via CloudTrail`, `AWS Console Signin via CloudTrail`). `eventName: ConsoleLogin`.
   - **R7a 루트 로그인** (높음): `userIdentity.type = Root`. 성공과 실패 모두 알린다.
   - **R7b 로그인 실패** (중간): `responseElements.ConsoleLogin = Failure`
   - **R7c MFA 없는 로그인** (중간): `additionalEventData.MFAUsed = No`, `userIdentity.type = IAMUser`
@@ -173,7 +178,7 @@ CloudTrail 이벤트는 **그 이벤트가 기록된 리전의 버스로만** �
 - `waf_alarms` 항목 하나당 CloudWatch 알람 1개(월 0.10달러)
 
 ### H1 `delivery-failure` — 알림 체계 자체 감시
-- **조건**: `AWS/Events FailedInvocations`(우리 규칙들) 합계 > 0, 또는 DLQ의 `ApproximateNumberOfMessagesVisible` > 0
+- **조건**: 홈 리전 DLQ의 `ApproximateNumberOfMessagesVisible` > 0. 전달에 실패한 알림은 모두 DLQ로 가므로 알람 하나로 모든 규칙을 덮는다.
 - **왜**: 탐지는 됐는데 알림이 안 가는 상황을 알아차리게 한다.
 
 ## 6. 알림 메시지
@@ -207,8 +212,10 @@ Runbook: https://github.com/<org>/aws-breach-alarms/blob/main/docs/runbook.md#r3
 | `enabled_rules` | list(string) | 리전 역할에 맞는 기본 목록 | 만들 규칙 ID |
 | `monitored_role_names` | list(string) | `[]` | R1·R2 대상 역할. 비어 있으면 R1·R2를 만들지 않는다 |
 | `allowed_source_patterns` | list(string) | `[]` | R2 허용 출발지 와일드카드 |
-| `trusted_principal_patterns` | list(string) | SSO·SSM 서비스 역할 | R3·R4 제외 주체 와일드카드 |
-| `waf_alarms` | list(object) | `[]` | R8: `{ web_acl, rule, region, threshold }` |
+| `operator_principal_patterns` | list(string) | SSO·SSM State Manager 역할 | 원격 명령을 실행해도 되는 주체 (R3) |
+| `deployer_principal_patterns` | list(string) | `[]` | IAM·공유 변경이 예상되는 배포 주체 (R4, R6) |
+| `runbook_url` | string | 이 저장소의 런북 | 알림에 붙는 런북 주소 |
+| `waf_alarms` | list(object) | `[]` | R8: `{ web_acl, rule, threshold }` |
 | `kms_key_arn` | string | `null` | SNS와 SQS 암호화용 키 (선택) |
 | `tags` | map(string) | `{}` | 공통 태그 |
 
@@ -216,7 +223,8 @@ Runbook: https://github.com/<org>/aws-breach-alarms/blob/main/docs/runbook.md#r3
 
 **CloudFormation**:
 - 같은 파라미터를 쓴다. 목록 값은 `CommaDelimitedList`로 받는다.
-- `Mode`, `EnableR1` 같은 조건(Conditions)으로 리소스 생성을 켜고 끈다.
+- 규칙마다 `Enable<Slug>` 파라미터(예: `EnableConsoleSignin`)로 켜고 끈다.
+- 템플릿은 반복을 못 하므로 알림 메일(`AlertEmail`)과 WAF 알람(`WafWebAclName`, `WafRuleName`, `WafThreshold`)은 하나씩만 받는다. 구독은 출력된 토픽에 직접 추가한다.
 - 여러 리전 배포는 StackSets 또는 리전마다 스택 생성으로 한다.
 
 ## 8. 오탐과 소음 관리
@@ -245,19 +253,21 @@ Runbook: https://github.com/<org>/aws-breach-alarms/blob/main/docs/runbook.md#r3
 ```
 aws-breach-alarms/
 ├─ rules/                     # 원본: 규칙 메타데이터 + 패턴 템플릿
-├─ terraform/                 # 모듈 (rules/*.json을 file()+jsondecode()로 읽음)
-│  └─ examples/{single-region,multi-region}/
-├─ cloudformation/template.yaml        # scripts/build_cfn.py가 생성 (직접 수정 금지)
-├─ scripts/build_cfn.py
+├─ rules/defaults.json, rules/message.json   # 공통 기본값과 알림 메시지 형식
+├─ *.tf                       # 저장소 루트의 Terraform 모듈 (rules/를 file()로 읽음)
+├─ cloudformation/template.json        # scripts/build_cfn.py가 생성 (직접 수정 금지)
+├─ scripts/{catalog.py, build_cfn.py, verify_aws.py, fetch_ruler.sh}
+├─ examples/terraform/{single-region,multi-region}/
 ├─ examples/policies/deny-outside-vpc.json
 ├─ tests/
 │  ├─ events/<rule>/{match,nomatch}/*.json   # 가명 처리한 CloudTrail 이벤트
-│  └─ ...
+│  ├─ ruler/Matcher.java      # aws/event-ruler 실행
+│  └─ test_*.py
 ├─ docs/
 │  ├─ design.md, design.ko.md
 │  ├─ lessons-learned.md, lessons-learned.ko.md
-│  └─ runbook.md          # 규칙별 대응 가이드
-├─ README.md, README.ko.md, LICENSE, SECURITY.md, CONTRIBUTING.md, CHANGELOG.md
+│  └─ runbook.md, runbook.ko.md   # 규칙별 대응 가이드
+├─ README.md, README.ko.md, LICENSE, SECURITY.md, CONTRIBUTING.md, CHANGELOG.md, Makefile
 └─ .github/workflows/ci.yml
 ```
 
@@ -267,7 +277,7 @@ aws-breach-alarms/
    - **판정 엔진**: EventBridge가 실제로 쓰는 오픈소스 매칭 라이브러리 [`aws/event-ruler`](https://github.com/aws/event-ruler)를 CI에서 돌린다. 자격증명 없이 오프라인으로, 같은 결과를 얻는 것이 목표다.
    - **교차 검증**: 관리자는 `aws events test-event-pattern` API로 같은 테스트 데이터를 돌려 event-ruler와 결과가 같은지 확인한다(`make verify-aws`, 자격증명 필요, 무료, 리소스를 만들지 않음).
    - **테스트 데이터**: 실제 사고의 이벤트 형태를 쓰고, 계정 ID와 IP는 문서용 값으로 바꾼다.
-2. **생성물 일치 테스트**: `build_cfn.py`를 다시 돌린 결과가 커밋된 `template.yaml`과 다르면 CI가 실패한다.
+2. **생성물 일치 테스트**: `build_cfn.py`를 다시 돌린 결과가 커밋된 `template.json`과 다르면 CI가 실패한다.
 3. **정적 검사**: `terraform fmt -check`, `terraform validate`, `terraform test`(mock provider), `cfn-lint`, `gitleaks`
 4. **배포 검증 (릴리스 전, 테스트 계정)**:
    - 규칙마다 안전한 트리거로 메일 도착을 확인한다(예: R4는 임시 IAM 사용자를 만들었다가 지움).
@@ -314,6 +324,9 @@ aws-breach-alarms/
 | D3 | 알림은 홈 리전 하나에서만 보낸다 | 구독 확인과 관리 지점을 하나로 만든다 |
 | D4 | 패턴 테스트에 event-ruler를 쓴다 | 실제 엔진과 같은 판정을 자격증명 없이 얻는다 |
 | D5 | R1과 R2를 분리한다 | deny 정책이 있는 팀과 없는 팀 모두 쓸 수 있게 한다 |
+| D6 | Terraform 모듈을 저장소 루트에 둔다 | 하위 폴더 모듈은 경로로 불러올 때 `rules/`를 읽지 못한다 |
+| D7 | CloudFormation은 JSON으로 생성한다 | 표준 라이브러리만으로 생성하고, YAML 태그 이스케이프 문제가 없다 |
+| D8 | 모듈에서 data source를 쓰지 않는다 | 계정 ID를 생성된 ARN에서 얻어, 테스트가 오프라인으로 plan할 수 있다 |
 
 ## 16. 로드맵
 

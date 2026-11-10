@@ -49,3 +49,11 @@ def test_rendered_patterns_fit_the_default_eventbridge_size_limit(test_config):
         if rule["kind"] == "event":
             size = len(json.dumps(catalog.render_pattern(rule, config), separators=(",", ":")))
             assert size <= 2048, f"{rule['slug']} pattern is {size} chars"
+
+
+def test_every_alert_links_to_an_existing_runbook_section_in_both_languages():
+    docs = catalog.RULES_DIR.parent / "docs"
+    for name in ("runbook.md", "runbook.ko.md"):
+        headings = {line[3:].strip().lower().replace(" ", "-") for line in (docs / name).read_text().splitlines() if line.startswith("## ")}
+        for rule in catalog.load_rules():
+            assert catalog.anchor(rule) in headings, f"{name} lacks a section for {rule['id']} {rule['slug']}"
