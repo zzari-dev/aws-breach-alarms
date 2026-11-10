@@ -1,0 +1,20 @@
+{
+  "id": "R2",
+  "slug": "role-offsite",
+  "kind": "event",
+  "title": "Monitored role used from an unexpected source",
+  "severity": "HIGH",
+  "state": "ENABLED_WITH_ALL_CLOUDTRAIL_MANAGEMENT_EVENTS",
+  "why": "Instance and task role credentials should only be used from your own network. A call from anywhere else usually means the credentials were stolen, for example through SSRF against the instance metadata service.",
+  "params": {"monitored_role_names": "required", "allowed_source_patterns": "required"},
+  "pattern": {
+    "detail-type": ["AWS API Call via CloudTrail"],
+    "detail": {
+      "userIdentity": {
+        "type": ["AssumedRole"],
+        "sessionContext": {"sessionIssuer": {"userName": "@@monitored_role_names@@"}}
+      },
+      "sourceIPAddress": [{"anything-but": {"wildcard": "@@allowed_source_patterns@@"}}]
+    }
+  }
+}

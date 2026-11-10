@@ -1,0 +1,25 @@
+{
+  "id": "R4",
+  "slug": "iam-persistence",
+  "kind": "event",
+  "title": "IAM change that can create a backdoor",
+  "severity": "HIGH",
+  "state": "ENABLED",
+  "why": "New users, access keys, login profiles, trust policy edits and policy attachments are how attackers keep access after the original hole is closed.",
+  "params": {"deployer_principal_patterns": "optional"},
+  "pattern": {
+    "detail-type": ["AWS API Call via CloudTrail"],
+    "source": ["aws.iam"],
+    "detail": {
+      "eventName": [
+        "CreateUser", "CreateAccessKey", "CreateLoginProfile", "UpdateLoginProfile",
+        "AttachUserPolicy", "PutUserPolicy", "AttachRolePolicy", "PutRolePolicy",
+        "AttachGroupPolicy", "PutGroupPolicy", "AddUserToGroup",
+        "CreateRole", "UpdateAssumeRolePolicy", "CreatePolicyVersion", "SetDefaultPolicyVersion",
+        "DeactivateMFADevice", "DeleteVirtualMFADevice",
+        "CreateOpenIDConnectProvider", "CreateSAMLProvider"
+      ],
+      "userIdentity": {"arn": [{"anything-but": {"wildcard": "@@deployer_principal_patterns@@"}}]}
+    }
+  }
+}

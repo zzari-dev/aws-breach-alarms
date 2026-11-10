@@ -1,7 +1,10 @@
+.cache/
 .terraform/
+.terraform.lock.hcl
 *.tfstate*
+*.tfplan
 *.tfvars
-!examples/**/*.tfvars.example
 .env
 __pycache__/
 .venv/
+.pytest_cache/

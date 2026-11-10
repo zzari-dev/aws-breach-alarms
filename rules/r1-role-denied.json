@@ -1,0 +1,20 @@
+{
+  "id": "R1",
+  "slug": "role-denied",
+  "kind": "event",
+  "title": "Monitored role was denied access",
+  "severity": "HIGH",
+  "state": "ENABLED_WITH_ALL_CLOUDTRAIL_MANAGEMENT_EVENTS",
+  "why": "Healthy workloads rarely hit authorization errors. With a deny-outside-VPC policy on the role, stolen credentials used elsewhere always end in AccessDenied.",
+  "params": {"monitored_role_names": "required"},
+  "pattern": {
+    "detail-type": ["AWS API Call via CloudTrail"],
+    "detail": {
+      "userIdentity": {
+        "type": ["AssumedRole"],
+        "sessionContext": {"sessionIssuer": {"userName": "@@monitored_role_names@@"}}
+      },
+      "errorCode": ["AccessDenied", "AccessDeniedException", "Client.UnauthorizedOperation", "UnauthorizedOperation"]
+    }
+  }
+}

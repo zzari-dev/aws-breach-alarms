@@ -1,0 +1,48 @@
+{
+  "version": "0",
+  "id": "00000000-0000-0000-0000-000000000066",
+  "detail-type": "AWS Console Sign In via CloudTrail",
+  "source": "aws.signin",
+  "account": "123456789012",
+  "time": "2026-01-01T12:34:56Z",
+  "region": "us-east-1",
+  "resources": [],
+  "detail": {
+    "eventVersion": "1.08",
+    "userIdentity": {
+      "type": "AssumedRole",
+      "principalId": "AROAEXAMPLEAWSRES:admin@example.com",
+      "arn": "arn:aws:sts::123456789012:assumed-role/AWSReservedSSO_AdministratorAccess_0123456789abcdef/admin@example.com",
+      "accountId": "123456789012",
+      "sessionContext": {
+        "sessionIssuer": {
+          "type": "Role",
+          "principalId": "AROAEXAMPLEAWSRES",
+          "arn": "arn:aws:iam::123456789012:role/AWSReservedSSO_AdministratorAccess_0123456789abcdef",
+          "accountId": "123456789012",
+          "userName": "AWSReservedSSO_AdministratorAccess_0123456789abcdef"
+        }
+      }
+    },
+    "eventTime": "2026-01-01T12:34:56Z",
+    "eventSource": "signin.amazonaws.com",
+    "eventName": "ConsoleLogin",
+    "awsRegion": "us-east-1",
+    "sourceIPAddress": "198.51.100.23",
+    "userAgent": "Mozilla/5.0",
+    "requestParameters": null,
+    "responseElements": {
+      "ConsoleLogin": "Success"
+    },
+    "additionalEventData": {
+      "MobileVersion": "No",
+      "MFAUsed": "No"
+    },
+    "eventID": "00000000-0000-0000-0000-000000000065",
+    "readOnly": false,
+    "eventType": "AwsConsoleSignIn",
+    "managementEvent": true,
+    "recipientAccountId": "123456789012",
+    "eventCategory": "Management"
+  }
+}

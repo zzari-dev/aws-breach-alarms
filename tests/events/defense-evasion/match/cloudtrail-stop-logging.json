@@ -1,0 +1,42 @@
+{
+  "version": "0",
+  "id": "00000000-0000-0000-0000-000000000034",
+  "detail-type": "AWS API Call via CloudTrail",
+  "source": "aws.cloudtrail",
+  "account": "123456789012",
+  "time": "2026-01-01T12:34:56Z",
+  "region": "ap-northeast-2",
+  "resources": [],
+  "detail": {
+    "eventVersion": "1.10",
+    "userIdentity": {
+      "type": "AssumedRole",
+      "principalId": "AROAEXAMPLEAPP-SE:i-0abc1234def567890",
+      "arn": "arn:aws:sts::123456789012:assumed-role/app-server-role/i-0abc1234def567890",
+      "accountId": "123456789012",
+      "sessionContext": {
+        "sessionIssuer": {
+          "type": "Role",
+          "principalId": "AROAEXAMPLEAPP-SE",
+          "arn": "arn:aws:iam::123456789012:role/app-server-role",
+          "accountId": "123456789012",
+          "userName": "app-server-role"
+        }
+      }
+    },
+    "eventTime": "2026-01-01T12:34:56Z",
+    "eventSource": "cloudtrail.amazonaws.com",
+    "eventName": "StopLogging",
+    "awsRegion": "ap-northeast-2",
+    "sourceIPAddress": "198.51.100.23",
+    "userAgent": "Boto3/1.34.0 md/Botocore#1.34.0 os/windows#10",
+    "requestParameters": null,
+    "responseElements": null,
+    "eventID": "00000000-0000-0000-0000-000000000033",
+    "readOnly": false,
+    "eventType": "AwsApiCall",
+    "managementEvent": true,
+    "recipientAccountId": "123456789012",
+    "eventCategory": "Management"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "id": "R5b",
+  "slug": "alarm-tamper",
+  "kind": "event",
+  "title": "These breach alarms were modified",
+  "severity": "HIGH",
+  "state": "ENABLED",
+  "why": "Removing the alert rules or unsubscribing the alert email silences every other alarm. Expect this alert when you redeploy the module yourself.",
+  "params": {"name_prefix": "required", "alert_topic_arn": "optional"},
+  "pattern": {
+    "detail-type": ["AWS API Call via CloudTrail"],
+    "detail": {
+      "$or": [
+        {"eventSource": ["events.amazonaws.com"], "eventName": ["DeleteRule", "DisableRule", "PutRule"], "requestParameters": {"name": [{"prefix": "@@name_prefix@@"}]}},
+        {"eventSource": ["events.amazonaws.com"], "eventName": ["RemoveTargets", "PutTargets"], "requestParameters": {"rule": [{"prefix": "@@name_prefix@@"}]}},
+        {"eventSource": ["sns.amazonaws.com"], "eventName": ["DeleteTopic", "SetTopicAttributes", "RemovePermission", "AddPermission"], "requestParameters": {"topicArn": ["@@alert_topic_arn@@"]}},
+        {"eventSource": ["sns.amazonaws.com"], "eventName": ["Unsubscribe"], "requestParameters": {"subscriptionArn": [{"prefix": "@@alert_topic_arn@@"}]}}
+      ]
+    }
+  }
+}

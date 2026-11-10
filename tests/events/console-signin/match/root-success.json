@@ -1,0 +1,39 @@
+{
+  "version": "0",
+  "id": "00000000-0000-0000-0000-00000000005e",
+  "detail-type": "AWS Console Sign In via CloudTrail",
+  "source": "aws.signin",
+  "account": "123456789012",
+  "time": "2026-01-01T12:34:56Z",
+  "region": "us-east-1",
+  "resources": [],
+  "detail": {
+    "eventVersion": "1.08",
+    "userIdentity": {
+      "type": "Root",
+      "principalId": "123456789012",
+      "arn": "arn:aws:iam::123456789012:root",
+      "accountId": "123456789012"
+    },
+    "eventTime": "2026-01-01T12:34:56Z",
+    "eventSource": "signin.amazonaws.com",
+    "eventName": "ConsoleLogin",
+    "awsRegion": "us-east-1",
+    "sourceIPAddress": "198.51.100.23",
+    "userAgent": "Mozilla/5.0",
+    "requestParameters": null,
+    "responseElements": {
+      "ConsoleLogin": "Success"
+    },
+    "additionalEventData": {
+      "MobileVersion": "No",
+      "MFAUsed": "Yes"
+    },
+    "eventID": "00000000-0000-0000-0000-00000000005d",
+    "readOnly": false,
+    "eventType": "AwsConsoleSignIn",
+    "managementEvent": true,
+    "recipientAccountId": "123456789012",
+    "eventCategory": "Management"
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "id": "R7",
+  "slug": "console-signin",
+  "kind": "event",
+  "title": "Risky console sign-in",
+  "severity": "HIGH",
+  "state": "ENABLED",
+  "why": "Root sign-ins, failed sign-ins and IAM user sign-ins without MFA are the usual signs of account takeover attempts.",
+  "params": {},
+  "pattern": {
+    "detail-type": ["AWS Console Sign In via CloudTrail", "AWS Console Signin via CloudTrail"],
+    "detail": {
+      "eventName": ["ConsoleLogin"],
+      "$or": [
+        {"userIdentity": {"type": ["Root"]}},
+        {"responseElements": {"ConsoleLogin": ["Failure"]}},
+        {"userIdentity": {"type": ["IAMUser"]}, "additionalEventData": {"MFAUsed": ["No"]}}
+      ]
+    }
+  }
+}

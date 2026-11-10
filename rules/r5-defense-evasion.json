@@ -1,0 +1,23 @@
+{
+  "id": "R5",
+  "slug": "defense-evasion",
+  "kind": "event",
+  "title": "Logging or threat detection was switched off",
+  "severity": "HIGH",
+  "state": "ENABLED",
+  "why": "Attackers disable CloudTrail, GuardDuty, Config and flow logs to hide what they do next.",
+  "params": {},
+  "pattern": {
+    "detail-type": ["AWS API Call via CloudTrail"],
+    "detail": {
+      "$or": [
+        {"eventSource": ["cloudtrail.amazonaws.com"], "eventName": ["StopLogging", "DeleteTrail", "UpdateTrail", "PutEventSelectors", "PutInsightSelectors"]},
+        {"eventSource": ["guardduty.amazonaws.com"], "eventName": ["DeleteDetector", "UpdateDetector", "DisassociateFromMasterAccount", "DisassociateFromAdministratorAccount"]},
+        {"eventSource": ["config.amazonaws.com"], "eventName": ["StopConfigurationRecorder", "DeleteConfigurationRecorder", "DeleteDeliveryChannel"]},
+        {"eventSource": ["ec2.amazonaws.com"], "eventName": ["DeleteFlowLogs"]},
+        {"eventSource": ["wafv2.amazonaws.com"], "eventName": ["DeleteLoggingConfiguration"]},
+        {"eventSource": ["securityhub.amazonaws.com"], "eventName": ["DisableSecurityHub"]}
+      ]
+    }
+  }
+}

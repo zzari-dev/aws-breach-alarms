@@ -1,0 +1,8 @@
+{
+  "id": "R8",
+  "slug": "waf-spike",
+  "kind": "metric",
+  "title": "Spike in requests blocked by a WAF rule",
+  "severity": "MEDIUM",
+  "why": "Blocks on a rule that guards known-vulnerable paths mean someone is trying again."
+}

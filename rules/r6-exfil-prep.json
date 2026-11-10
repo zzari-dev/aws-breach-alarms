@@ -1,0 +1,22 @@
+{
+  "id": "R6",
+  "slug": "exfil-prep",
+  "kind": "event",
+  "title": "Data sharing or key destruction",
+  "severity": "HIGH",
+  "state": "ENABLED",
+  "why": "Sharing snapshots or images with another account, opening bucket policies, or destroying KMS keys are common ways to take data out or hold it to ransom.",
+  "params": {"deployer_principal_patterns": "optional"},
+  "pattern": {
+    "detail-type": ["AWS API Call via CloudTrail"],
+    "detail": {
+      "userIdentity": {"arn": [{"anything-but": {"wildcard": "@@deployer_principal_patterns@@"}}]},
+      "$or": [
+        {"eventSource": ["ec2.amazonaws.com"], "eventName": ["ModifySnapshotAttribute", "ModifyImageAttribute"]},
+        {"eventSource": ["rds.amazonaws.com"], "eventName": ["ModifyDBSnapshotAttribute", "ModifyDBClusterSnapshotAttribute"]},
+        {"eventSource": ["s3.amazonaws.com"], "eventName": ["PutBucketPolicy", "PutBucketAcl", "DeleteBucketPolicy", "PutBucketPublicAccessBlock", "DeleteBucketPublicAccessBlock", "PutAccountPublicAccessBlock", "DeleteAccountPublicAccessBlock"]},
+        {"eventSource": ["kms.amazonaws.com"], "eventName": ["ScheduleKeyDeletion", "DisableKey", "PutKeyPolicy"]}
+      ]
+    }
+  }
+}

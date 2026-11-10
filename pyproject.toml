@@ -1,0 +1,13 @@
+[project]
+name = "aws-breach-alarms"
+version = "0.1.0"
+description = "Near-zero-cost AWS breach alarms: CloudTrail -> EventBridge -> SNS"
+requires-python = ">=3.10"
+license = "MIT"
+
+[dependency-groups]
+dev = ["pytest>=8", "cfn-lint>=1"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["terraform: needs the terraform CLI and network access to download the AWS provider"]

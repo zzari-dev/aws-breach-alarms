@@ -1,0 +1,18 @@
+{
+  "id": "R3",
+  "slug": "remote-exec",
+  "kind": "event",
+  "title": "Remote command execution by an untrusted principal",
+  "severity": "HIGH",
+  "state": "ENABLED",
+  "why": "SSM Run Command, Session Manager and ECS Exec give shell access to your servers and containers. Attackers holding stolen credentials use them to move to every host.",
+  "params": {"operator_principal_patterns": "optional"},
+  "pattern": {
+    "detail-type": ["AWS API Call via CloudTrail"],
+    "source": ["aws.ssm", "aws.ecs"],
+    "detail": {
+      "eventName": ["SendCommand", "StartSession", "ResumeSession", "ExecuteCommand"],
+      "userIdentity": {"arn": [{"anything-but": {"wildcard": "@@operator_principal_patterns@@"}}]}
+    }
+  }
+}

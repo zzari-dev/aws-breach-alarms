@@ -1,0 +1,8 @@
+{
+  "id": "H1",
+  "slug": "delivery-failure",
+  "kind": "metric",
+  "title": "Breach alarms failed to deliver an alert",
+  "severity": "HIGH",
+  "why": "A detection that never reaches anyone is the same as no detection."
+}

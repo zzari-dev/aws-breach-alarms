@@ -1,0 +1,12 @@
+{
+  "name_prefix": "breach-alarms",
+  "monitored_role_names": [],
+  "allowed_source_patterns": [],
+  "operator_principal_patterns": [
+    "arn:aws:sts::*:assumed-role/AWSReservedSSO_*",
+    "arn:aws:sts::*:assumed-role/AWSServiceRoleForAmazonSSM/*"
+  ],
+  "deployer_principal_patterns": [],
+  "alert_topic_arn": "",
+  "runbook_url": "https://github.com/zzari-dev/aws-breach-alarms/blob/main/docs/runbook.md"
+}

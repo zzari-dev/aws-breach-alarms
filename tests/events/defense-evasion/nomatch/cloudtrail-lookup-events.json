@@ -1,0 +1,42 @@
+{
+  "version": "0",
+  "id": "00000000-0000-0000-0000-00000000003e",
+  "detail-type": "AWS API Call via CloudTrail",
+  "source": "aws.cloudtrail",
+  "account": "123456789012",
+  "time": "2026-01-01T12:34:56Z",
+  "region": "ap-northeast-2",
+  "resources": [],
+  "detail": {
+    "eventVersion": "1.10",
+    "userIdentity": {
+      "type": "AssumedRole",
+      "principalId": "AROAEXAMPLEAWSRES:admin@example.com",
+      "arn": "arn:aws:sts::123456789012:assumed-role/AWSReservedSSO_AdministratorAccess_0123456789abcdef/admin@example.com",
+      "accountId": "123456789012",
+      "sessionContext": {
+        "sessionIssuer": {
+          "type": "Role",
+          "principalId": "AROAEXAMPLEAWSRES",
+          "arn": "arn:aws:iam::123456789012:role/AWSReservedSSO_AdministratorAccess_0123456789abcdef",
+          "accountId": "123456789012",
+          "userName": "AWSReservedSSO_AdministratorAccess_0123456789abcdef"
+        }
+      }
+    },
+    "eventTime": "2026-01-01T12:34:56Z",
+    "eventSource": "cloudtrail.amazonaws.com",
+    "eventName": "LookupEvents",
+    "awsRegion": "ap-northeast-2",
+    "sourceIPAddress": "198.51.100.23",
+    "userAgent": "Boto3/1.34.0 md/Botocore#1.34.0 os/windows#10",
+    "requestParameters": null,
+    "responseElements": null,
+    "eventID": "00000000-0000-0000-0000-00000000003d",
+    "readOnly": true,
+    "eventType": "AwsApiCall",
+    "managementEvent": true,
+    "recipientAccountId": "123456789012",
+    "eventCategory": "Management"
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "name_prefix": "breach-alarms",
+  "monitored_role_names": ["app-server-role"],
+  "allowed_source_patterns": ["203.0.113.10", "10.*", "*.amazonaws.com", "AWS Internal"],
+  "deployer_principal_patterns": ["arn:aws:sts::*:assumed-role/terraform-deployer/*"],
+  "alert_topic_arn": "arn:aws:sns:ap-northeast-2:123456789012:breach-alarms-alerts"
+}
