@@ -8,3 +8,4 @@
 - CloudFormation template generated from the same catalog.
 - Pattern tests judged by aws/event-ruler; Terraform and CloudFormation parity tests.
 - Runbook in English and Korean.
+- `alert_topic_arn` / `ExistingTopicArn`: send alerts to an existing SNS topic instead of creating one.

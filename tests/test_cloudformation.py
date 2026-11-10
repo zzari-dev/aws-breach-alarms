@@ -88,3 +88,17 @@ def test_waf_alarm_exists_only_when_a_web_acl_is_given(test_config):
 def test_template_passes_cfn_lint():
     result = subprocess.run(["cfn-lint", str(TEMPLATE)], capture_output=True, text=True)
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+EXISTING = "arn:aws:sns:ap-northeast-2:123456789012:existing-alarm-topic"
+
+
+def test_home_stack_can_reuse_an_existing_topic(test_config):
+    stack = Stack(build_cfn.build(), _params(test_config, ExistingTopicArn=EXISTING, AlertEmail="a@example.com"), REFS)
+    assert not stack.exists("AlertTopic") and not stack.exists("AlertTopicPolicy") and not stack.exists("AlertSubscription")
+    rules = _rule_resources(stack)
+    assert stack.eval(rules["breach-alarms-r3-remote-exec"]["Properties"]["Targets"])[0]["Arn"] == EXISTING
+    tamper = next(r for r in catalog.load_rules() if r["slug"] == "alarm-tamper")
+    expected = catalog.render_pattern(tamper, catalog.with_defaults({**test_config, "alert_topic_arn": EXISTING}))
+    assert stack.eval(rules["breach-alarms-r5b-alarm-tamper"]["Properties"]["EventPattern"]) == expected
+    assert stack.eval(stack.t["Resources"]["DeliveryFailureAlarm"]["Properties"]["AlarmActions"]) == [EXISTING]

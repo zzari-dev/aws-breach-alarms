@@ -16,7 +16,7 @@ locals {
   # Each @@token@@ in a pattern becomes this JSON text. "" marks an empty value.
   encoded = {
     name_prefix                 = jsonencode(local.name_prefix)
-    alert_topic_arn             = jsonencode(local.is_home ? aws_sns_topic.alerts[0].arn : local.sentinel)
+    alert_topic_arn             = jsonencode(local.is_home ? local.topic_arn : local.sentinel)
     monitored_role_names        = length(var.monitored_role_names) > 0 ? jsonencode(var.monitored_role_names) : ""
     allowed_source_patterns     = length(var.allowed_source_patterns) > 0 ? jsonencode(var.allowed_source_patterns) : ""
     operator_principal_patterns = length(local.operators) > 0 ? jsonencode(local.operators) : ""

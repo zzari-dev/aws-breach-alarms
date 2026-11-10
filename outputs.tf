@@ -1,6 +1,6 @@
 output "sns_topic_arn" {
-  description = "Home only: the alert topic. Subscribe more endpoints (e.g. AWS Chatbot) here."
-  value       = local.is_home ? aws_sns_topic.alerts[0].arn : null
+  description = "Home only: the alert topic (created or reused). Subscribe more endpoints (e.g. AWS Chatbot) here."
+  value       = local.topic_arn
 }
 
 output "dlq_arn" {

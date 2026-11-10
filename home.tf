@@ -1,11 +1,13 @@
 # Resources that only exist in the home region: the alert topic, its DLQ and alarms.
 
 locals {
-  account_id = local.is_home ? split(":", aws_sns_topic.alerts[0].arn)[4] : null
+  create_topic = local.is_home && var.alert_topic_arn == null
+  topic_arn    = local.is_home ? (local.create_topic ? aws_sns_topic.alerts[0].arn : var.alert_topic_arn) : null
+  account_id   = local.is_home ? split(":", local.topic_arn)[4] : null
 }
 
 resource "aws_sns_topic" "alerts" {
-  count = local.is_home ? 1 : 0
+  count = local.create_topic ? 1 : 0
 
   name              = "${local.name_prefix}-alerts"
   kms_master_key_id = var.kms_key_arn
@@ -13,7 +15,7 @@ resource "aws_sns_topic" "alerts" {
 }
 
 resource "aws_sns_topic_policy" "alerts" {
-  count = local.is_home ? 1 : 0
+  count = local.create_topic ? 1 : 0
 
   arn = aws_sns_topic.alerts[0].arn
   policy = jsonencode({
@@ -30,9 +32,9 @@ resource "aws_sns_topic_policy" "alerts" {
 }
 
 resource "aws_sns_topic_subscription" "email" {
-  for_each = local.is_home ? toset(var.alert_emails) : toset([])
+  for_each = local.create_topic ? toset(var.alert_emails) : toset([])
 
-  topic_arn = aws_sns_topic.alerts[0].arn
+  topic_arn = local.topic_arn
   protocol  = "email"
   endpoint  = each.value
 }
@@ -69,7 +71,7 @@ resource "aws_cloudwatch_event_target" "alert" {
 
   rule      = aws_cloudwatch_event_rule.this[each.key].name
   target_id = "alert"
-  arn       = aws_sns_topic.alerts[0].arn
+  arn       = local.topic_arn
 
   input_transformer {
     input_paths    = local.message.input_paths
@@ -95,7 +97,7 @@ resource "aws_cloudwatch_metric_alarm" "delivery_failure" {
   threshold           = 0
   comparison_operator = "GreaterThanThreshold"
   treat_missing_data  = "notBreaching"
-  alarm_actions       = [aws_sns_topic.alerts[0].arn]
+  alarm_actions       = [local.topic_arn]
   tags                = var.tags
 }
 
@@ -106,13 +108,13 @@ resource "aws_cloudwatch_metric_alarm" "waf_spike" {
   alarm_description   = "[aws-breach-alarms] R8: requests blocked by WAF rule ${each.value.rule} spiked."
   namespace           = "AWS/WAFV2"
   metric_name         = "BlockedRequests"
-  dimensions          = { WebACL = each.value.web_acl, Rule = each.value.rule, Region = split(":", aws_sns_topic.alerts[0].arn)[3] }
+  dimensions          = { WebACL = each.value.web_acl, Rule = each.value.rule, Region = split(":", local.topic_arn)[3] }
   statistic           = "Sum"
   period              = 300
   evaluation_periods  = 1
   threshold           = each.value.threshold
   comparison_operator = "GreaterThanOrEqualToThreshold"
   treat_missing_data  = "notBreaching"
-  alarm_actions       = [aws_sns_topic.alerts[0].arn]
+  alarm_actions       = [local.topic_arn]
   tags                = var.tags
 }

@@ -44,6 +44,21 @@ module "breach_alarms" {
 - IAM 이벤트와 루트 로그인은 us-east-1(과 몇몇 리전)에 기록됩니다. 그 리전에는 `mode = "forwarder"` 모듈을 추가하세요. [examples/terraform/multi-region](examples/terraform/multi-region/main.tf)을 참고하세요.
 - R1과 함께 쓰기를 권장합니다: [examples/policies/deny-outside-vpc.json](examples/policies/)
 
+### 기존 SNS 토픽 사용
+
+`alert_topic_arn`(CloudFormation은 `ExistingTopicArn`)을 지정합니다. 모듈은 그 토픽의 정책을 바꾸지 않으므로, 아래 문장을 토픽 정책에 직접 추가해야 합니다.
+
+```json
+{
+  "Sid": "AllowBreachAlarms",
+  "Effect": "Allow",
+  "Principal": { "Service": ["events.amazonaws.com", "cloudwatch.amazonaws.com"] },
+  "Action": "sns:Publish",
+  "Resource": "<토픽 ARN>",
+  "Condition": { "StringEquals": { "aws:SourceAccount": "<계정 ID>" } }
+}
+```
+
 ## 빠른 시작 (CloudFormation)
 
 [cloudformation/template.json](cloudformation/template.json)을 배포합니다.

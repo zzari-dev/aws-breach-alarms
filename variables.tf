@@ -84,3 +84,9 @@ variable "tags" {
   type        = map(string)
   default     = {}
 }
+
+variable "alert_topic_arn" {
+  description = "Home only: send alerts to this existing SNS topic instead of creating one. The module does not change its policy: allow events.amazonaws.com and cloudwatch.amazonaws.com to sns:Publish yourself (see README)."
+  type        = string
+  default     = null
+}

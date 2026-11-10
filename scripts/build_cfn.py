@@ -19,6 +19,9 @@ def rule_logical_id(rule):
     return "Rule" + camel(rule["slug"])
 
 
+# The alert topic: created by the stack, or an existing one passed in ExistingTopicArn.
+TOPIC = {"Fn::If": ["UseExistingTopic", {"Ref": "ExistingTopicArn"}, {"Ref": "AlertTopic"}]}
+
 LIST_PARAMS = {
     "monitored_role_names": "Names of IAM roles to watch for R1/R2 (e.g. EC2 instance or ECS task roles). Empty disables R1/R2.",
     "allowed_source_patterns": "R2: source IP wildcards where monitored roles may be used, e.g. 203.0.113.10,10.*,*.amazonaws.com,AWS Internal. Empty disables R2.",
@@ -31,7 +34,7 @@ def _token_value(name, need):
     if name == "name_prefix":
         return {"Ref": "NamePrefix"}
     if name == "alert_topic_arn":
-        return {"Fn::If": ["IsHome", {"Ref": "AlertTopic"}, catalog.SENTINEL]}
+        return {"Fn::If": ["IsHome", TOPIC, catalog.SENTINEL]}
     ref = {"Ref": camel(name)}
     return ref if need == "required" else {"Fn::If": ["Has" + camel(name), ref, [catalog.SENTINEL]]}
 
@@ -53,7 +56,9 @@ def _parameters(defaults, rules):
         "HomeRegion": {"Type": "String", "Default": "", "Description": "Forwarder only: the region of the home stack."},
         "NamePrefix": {"Type": "String", "Default": defaults["name_prefix"], "MinLength": 1, "AllowedPattern": "[A-Za-z0-9_.-]+",
                        "Description": "Prefix for resource names. R5b watches rules with this prefix."},
-        "AlertEmail": {"Type": "String", "Default": "", "Description": "Home only: email address that receives alerts (confirm the subscription once)."},
+        "AlertEmail": {"Type": "String", "Default": "", "Description": "Home only: email address that receives alerts (confirm the subscription once). Ignored with ExistingTopicArn."},
+        "ExistingTopicArn": {"Type": "String", "Default": "",
+                             "Description": "Home only: send alerts to this existing SNS topic instead of creating one. Its policy must allow events.amazonaws.com and cloudwatch.amazonaws.com to sns:Publish."},
         "RunbookUrl": {"Type": "String", "Default": defaults["runbook_url"], "Description": "Base URL of the runbook linked from alerts."},
     }
     for name, description in LIST_PARAMS.items():
@@ -74,7 +79,9 @@ def _conditions(rules):
     conditions = {
         "IsHome": {"Fn::Equals": [{"Ref": "Mode"}, "home"]},
         "IsForwarder": {"Fn::Not": [{"Condition": "IsHome"}]},
-        "HasAlertEmail": {"Fn::And": [{"Condition": "IsHome"}, {"Fn::Not": [{"Fn::Equals": [{"Ref": "AlertEmail"}, ""]}]}]},
+        "UseExistingTopic": {"Fn::Not": [{"Fn::Equals": [{"Ref": "ExistingTopicArn"}, ""]}]},
+        "CreateTopic": {"Fn::And": [{"Condition": "IsHome"}, {"Fn::Not": [{"Condition": "UseExistingTopic"}]}]},
+        "HasAlertEmail": {"Fn::And": [{"Condition": "CreateTopic"}, {"Fn::Not": [{"Fn::Equals": [{"Ref": "AlertEmail"}, ""]}]}]},
         "HasKms": {"Fn::Not": [{"Fn::Equals": [{"Ref": "KmsKeyArn"}, ""]}]},
         "HasWafAlarm": {"Fn::And": [
             {"Condition": "IsHome"},
@@ -95,7 +102,7 @@ def _rule_resource(rule):
     values = {name: _token_value(name, need) for name, need in rule["params"].items()}
     home_target = {
         "Id": "alert",
-        "Arn": {"Ref": "AlertTopic"},
+        "Arn": TOPIC,
         "DeadLetterConfig": {"Arn": {"Fn::GetAtt": ["DeadLetterQueue", "Arn"]}},
         "InputTransformer": {
             "InputPathsMap": catalog.INPUT_PATHS,
@@ -126,11 +133,11 @@ def _shared_resources():
     account = {"aws:SourceAccount": {"Ref": "AWS::AccountId"}}
     return {
         "AlertTopic": {
-            "Type": "AWS::SNS::Topic", "Condition": "IsHome",
+            "Type": "AWS::SNS::Topic", "Condition": "CreateTopic",
             "Properties": {"TopicName": {"Fn::Sub": "${NamePrefix}-alerts"}, "KmsMasterKeyId": kms},
         },
         "AlertTopicPolicy": {
-            "Type": "AWS::SNS::TopicPolicy", "Condition": "IsHome",
+            "Type": "AWS::SNS::TopicPolicy", "Condition": "CreateTopic",
             "Properties": {
                 "Topics": [{"Ref": "AlertTopic"}],
                 "PolicyDocument": {"Version": "2012-10-17", "Statement": [{
@@ -174,7 +181,7 @@ def _shared_resources():
                 "Dimensions": [{"Name": "QueueName", "Value": {"Fn::GetAtt": ["DeadLetterQueue", "QueueName"]}}],
                 "Statistic": "Maximum", "Period": 300, "EvaluationPeriods": 1, "Threshold": 0,
                 "ComparisonOperator": "GreaterThanThreshold", "TreatMissingData": "notBreaching",
-                "AlarmActions": [{"Ref": "AlertTopic"}],
+                "AlarmActions": [TOPIC],
             },
         },
         "WafSpikeAlarm": {
@@ -190,7 +197,7 @@ def _shared_resources():
                 ],
                 "Statistic": "Sum", "Period": 300, "EvaluationPeriods": 1, "Threshold": {"Ref": "WafThreshold"},
                 "ComparisonOperator": "GreaterThanOrEqualToThreshold", "TreatMissingData": "notBreaching",
-                "AlarmActions": [{"Ref": "AlertTopic"}],
+                "AlarmActions": [TOPIC],
             },
         },
         "ForwarderRole": {
@@ -223,7 +230,7 @@ def build():
         "Conditions": _conditions(rules),
         "Resources": resources,
         "Outputs": {
-            "AlertTopicArn": {"Condition": "IsHome", "Value": {"Ref": "AlertTopic"}},
+            "AlertTopicArn": {"Condition": "IsHome", "Value": TOPIC},
             "DeadLetterQueueArn": {"Condition": "IsHome", "Value": {"Fn::GetAtt": ["DeadLetterQueue", "Arn"]}},
             "ForwarderRoleArn": {"Condition": "IsForwarder", "Value": {"Fn::GetAtt": ["ForwarderRole", "Arn"]}},
         },

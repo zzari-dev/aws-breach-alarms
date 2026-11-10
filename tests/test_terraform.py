@@ -105,3 +105,22 @@ def test_role_rules_are_skipped_without_monitored_roles(tmp_path, test_config):
     plan = _plan(tmp_path, _module_args({**test_config, "monitored_role_names": []}))
     rules = _resources(plan, "aws_cloudwatch_event_rule")
     assert "role-denied" not in rules and "role-offsite" not in rules and "remote-exec" in rules
+
+
+EXISTING = "arn:aws:sns:ap-northeast-2:123456789012:existing-alarm-topic"
+
+
+@pytest.fixture(scope="module")
+def existing_topic_plan(tmp_path_factory, test_config):
+    return _plan(tmp_path_factory.mktemp("existing"), _module_args(test_config, alert_topic_arn=EXISTING, alert_emails=["a@example.com"]))
+
+
+def test_home_can_reuse_an_existing_topic_without_touching_it(existing_topic_plan, test_config):
+    assert not _resources(existing_topic_plan, "aws_sns_topic")
+    assert not _resources(existing_topic_plan, "aws_sns_topic_policy")
+    assert not _resources(existing_topic_plan, "aws_sns_topic_subscription")
+    targets = _resources(existing_topic_plan, "aws_cloudwatch_event_target")
+    assert {t["change"]["after"]["arn"] for t in targets.values()} == {EXISTING}
+    tamper = next(r for r in catalog.load_rules() if r["slug"] == "alarm-tamper")
+    after = _resources(existing_topic_plan, "aws_cloudwatch_event_rule")["alarm-tamper"]["change"]["after"]
+    assert json.loads(after["event_pattern"]) == catalog.render_pattern(tamper, catalog.with_defaults({**test_config, "alert_topic_arn": EXISTING}))

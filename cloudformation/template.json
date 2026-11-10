@@ -26,7 +26,12 @@
     "AlertEmail": {
       "Type": "String",
       "Default": "",
-      "Description": "Home only: email address that receives alerts (confirm the subscription once)."
+      "Description": "Home only: email address that receives alerts (confirm the subscription once). Ignored with ExistingTopicArn."
+    },
+    "ExistingTopicArn": {
+      "Type": "String",
+      "Default": "",
+      "Description": "Home only: send alerts to this existing SNS topic instead of creating one. Its policy must allow events.amazonaws.com and cloudwatch.amazonaws.com to sns:Publish."
     },
     "RunbookUrl": {
       "Type": "String",
@@ -162,10 +167,36 @@
         }
       ]
     },
-    "HasAlertEmail": {
+    "UseExistingTopic": {
+      "Fn::Not": [
+        {
+          "Fn::Equals": [
+            {
+              "Ref": "ExistingTopicArn"
+            },
+            ""
+          ]
+        }
+      ]
+    },
+    "CreateTopic": {
       "Fn::And": [
         {
           "Condition": "IsHome"
+        },
+        {
+          "Fn::Not": [
+            {
+              "Condition": "UseExistingTopic"
+            }
+          ]
+        }
+      ]
+    },
+    "HasAlertEmail": {
+      "Fn::And": [
+        {
+          "Condition": "CreateTopic"
         },
         {
           "Fn::Not": [
@@ -377,7 +408,7 @@
   "Resources": {
     "AlertTopic": {
       "Type": "AWS::SNS::Topic",
-      "Condition": "IsHome",
+      "Condition": "CreateTopic",
       "Properties": {
         "TopicName": {
           "Fn::Sub": "${NamePrefix}-alerts"
@@ -397,7 +428,7 @@
     },
     "AlertTopicPolicy": {
       "Type": "AWS::SNS::TopicPolicy",
-      "Condition": "IsHome",
+      "Condition": "CreateTopic",
       "Properties": {
         "Topics": [
           {
@@ -541,7 +572,15 @@
         "TreatMissingData": "notBreaching",
         "AlarmActions": [
           {
-            "Ref": "AlertTopic"
+            "Fn::If": [
+              "UseExistingTopic",
+              {
+                "Ref": "ExistingTopicArn"
+              },
+              {
+                "Ref": "AlertTopic"
+              }
+            ]
           }
         ]
       }
@@ -586,7 +625,15 @@
         "TreatMissingData": "notBreaching",
         "AlarmActions": [
           {
-            "Ref": "AlertTopic"
+            "Fn::If": [
+              "UseExistingTopic",
+              {
+                "Ref": "ExistingTopicArn"
+              },
+              {
+                "Ref": "AlertTopic"
+              }
+            ]
           }
         ]
       }
@@ -677,7 +724,15 @@
               {
                 "Id": "alert",
                 "Arn": {
-                  "Ref": "AlertTopic"
+                  "Fn::If": [
+                    "UseExistingTopic",
+                    {
+                      "Ref": "ExistingTopicArn"
+                    },
+                    {
+                      "Ref": "AlertTopic"
+                    }
+                  ]
                 },
                 "DeadLetterConfig": {
                   "Arn": {
@@ -766,7 +821,15 @@
               {
                 "Id": "alert",
                 "Arn": {
-                  "Ref": "AlertTopic"
+                  "Fn::If": [
+                    "UseExistingTopic",
+                    {
+                      "Ref": "ExistingTopicArn"
+                    },
+                    {
+                      "Ref": "AlertTopic"
+                    }
+                  ]
                 },
                 "DeadLetterConfig": {
                   "Arn": {
@@ -863,7 +926,15 @@
               {
                 "Id": "alert",
                 "Arn": {
-                  "Ref": "AlertTopic"
+                  "Fn::If": [
+                    "UseExistingTopic",
+                    {
+                      "Ref": "ExistingTopicArn"
+                    },
+                    {
+                      "Ref": "AlertTopic"
+                    }
+                  ]
                 },
                 "DeadLetterConfig": {
                   "Arn": {
@@ -974,7 +1045,15 @@
               {
                 "Id": "alert",
                 "Arn": {
-                  "Ref": "AlertTopic"
+                  "Fn::If": [
+                    "UseExistingTopic",
+                    {
+                      "Ref": "ExistingTopicArn"
+                    },
+                    {
+                      "Ref": "AlertTopic"
+                    }
+                  ]
                 },
                 "DeadLetterConfig": {
                   "Arn": {
@@ -1101,7 +1180,15 @@
               {
                 "Id": "alert",
                 "Arn": {
-                  "Ref": "AlertTopic"
+                  "Fn::If": [
+                    "UseExistingTopic",
+                    {
+                      "Ref": "ExistingTopicArn"
+                    },
+                    {
+                      "Ref": "AlertTopic"
+                    }
+                  ]
                 },
                 "DeadLetterConfig": {
                   "Arn": {
@@ -1214,7 +1301,15 @@
                       "Fn::If": [
                         "IsHome",
                         {
-                          "Ref": "AlertTopic"
+                          "Fn::If": [
+                            "UseExistingTopic",
+                            {
+                              "Ref": "ExistingTopicArn"
+                            },
+                            {
+                              "Ref": "AlertTopic"
+                            }
+                          ]
                         },
                         "__none__"
                       ]
@@ -1236,7 +1331,15 @@
                         "Fn::If": [
                           "IsHome",
                           {
-                            "Ref": "AlertTopic"
+                            "Fn::If": [
+                              "UseExistingTopic",
+                              {
+                                "Ref": "ExistingTopicArn"
+                              },
+                              {
+                                "Ref": "AlertTopic"
+                              }
+                            ]
                           },
                           "__none__"
                         ]
@@ -1255,7 +1358,15 @@
               {
                 "Id": "alert",
                 "Arn": {
-                  "Ref": "AlertTopic"
+                  "Fn::If": [
+                    "UseExistingTopic",
+                    {
+                      "Ref": "ExistingTopicArn"
+                    },
+                    {
+                      "Ref": "AlertTopic"
+                    }
+                  ]
                 },
                 "DeadLetterConfig": {
                   "Arn": {
@@ -1386,7 +1497,15 @@
               {
                 "Id": "alert",
                 "Arn": {
-                  "Ref": "AlertTopic"
+                  "Fn::If": [
+                    "UseExistingTopic",
+                    {
+                      "Ref": "ExistingTopicArn"
+                    },
+                    {
+                      "Ref": "AlertTopic"
+                    }
+                  ]
                 },
                 "DeadLetterConfig": {
                   "Arn": {
@@ -1486,7 +1605,15 @@
               {
                 "Id": "alert",
                 "Arn": {
-                  "Ref": "AlertTopic"
+                  "Fn::If": [
+                    "UseExistingTopic",
+                    {
+                      "Ref": "ExistingTopicArn"
+                    },
+                    {
+                      "Ref": "AlertTopic"
+                    }
+                  ]
                 },
                 "DeadLetterConfig": {
                   "Arn": {
@@ -1536,7 +1663,15 @@
     "AlertTopicArn": {
       "Condition": "IsHome",
       "Value": {
-        "Ref": "AlertTopic"
+        "Fn::If": [
+          "UseExistingTopic",
+          {
+            "Ref": "ExistingTopicArn"
+          },
+          {
+            "Ref": "AlertTopic"
+          }
+        ]
       }
     },
     "DeadLetterQueueArn": {

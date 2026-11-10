@@ -44,6 +44,21 @@ module "breach_alarms" {
 - IAM events and root sign-ins are recorded in us-east-1 (and a few other regions). Add `mode = "forwarder"` modules there; see [examples/terraform/multi-region](examples/terraform/multi-region/main.tf).
 - Recommended for R1: [examples/policies/deny-outside-vpc.json](examples/policies/).
 
+### Using an existing SNS topic
+
+Set `alert_topic_arn` (CloudFormation: `ExistingTopicArn`). The module never changes that topic's policy, so add this statement to it yourself:
+
+```json
+{
+  "Sid": "AllowBreachAlarms",
+  "Effect": "Allow",
+  "Principal": { "Service": ["events.amazonaws.com", "cloudwatch.amazonaws.com"] },
+  "Action": "sns:Publish",
+  "Resource": "<topic ARN>",
+  "Condition": { "StringEquals": { "aws:SourceAccount": "<account ID>" } }
+}
+```
+
 ## Quick start (CloudFormation)
 
 Deploy [cloudformation/template.json](cloudformation/template.json):
