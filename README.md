@@ -1,26 +1,31 @@
 # aws-breach-alarms
 
+[한국어](README.ko.md)
+
 Near-zero-cost AWS breach alarms: CloudTrail → EventBridge → SNS email. No Lambda, no servers, under $1/month.
 
-> Status: design phase (v0.1). Implementation is in progress.
+> Status: design phase (v0.1). Implementation has not started yet.
 
 Born from a real incident where an attacker stole EC2 instance-role credentials via SSRF (IMDSv1) and operated for four days without a single alert, even though every step was recorded in CloudTrail.
 
-- Design (Korean): [docs/design.md](docs/design.md)
-- Lessons learned (Korean, anonymized): [docs/lessons-learned.md](docs/lessons-learned.md)
+- Design: [docs/design.md](docs/design.md)
+- Lessons learned (anonymized): [docs/lessons-learned.md](docs/lessons-learned.md)
 
 ## Planned rules (v0.1)
 
-| ID | Detects |
-|---|---|
-| R1 | AccessDenied from a monitored role (stolen instance credentials used outside the VPC) |
-| R2 | SSM SendCommand / StartSession and ECS ExecuteCommand by untrusted principals |
-| R3 | IAM persistence: new users, access keys, policy changes (us-east-1) |
-| R4 | Defense evasion & exfil prep: CloudTrail stop, GuardDuty delete, snapshot sharing, S3 policy changes |
-| R5 | Root console sign-in, failed console sign-ins (us-east-1) |
-| R6 | WAF blocked-request spike on a chosen rule (CloudWatch alarm) |
+| ID | Slug | Detects |
+|---|---|---|
+| R1 | `role-denied` | AccessDenied for a monitored role (stolen instance credentials blocked by a deny-outside-VPC policy) |
+| R2 | `role-offsite` | Monitored role used from a non-allowed source IP |
+| R3 | `remote-exec` | SSM SendCommand / StartSession and ECS ExecuteCommand by untrusted principals |
+| R4 | `iam-persistence` | New IAM users, access keys, login profiles, policy changes |
+| R5 | `defense-evasion` | CloudTrail / GuardDuty / Config / flow-log tampering, and tampering with these alarms |
+| R6 | `exfil-prep` | Snapshot or AMI sharing, S3 policy or public-access changes, KMS key deletion |
+| R7 | `console-signin` | Root sign-in, failed sign-ins, IAM sign-in without MFA |
+| R8 | `waf-spike` | Spike in blocks on a chosen WAF rule (CloudWatch alarm) |
+| H1 | `delivery-failure` | The alarm pipeline itself failing to deliver |
 
-Deployable as a Terraform module or a CloudFormation template, both generated from one rule catalog.
+Deploy as a Terraform module or a CloudFormation template. Both are built from one rule catalog. Alerts go out from one home region; other regions forward matched events to it.
 
 ## License
 

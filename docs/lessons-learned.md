@@ -1,86 +1,91 @@
-# 침해사고 교훈 (Lessons Learned)
+# Lessons Learned from a Real Breach
 
-이 프로젝트를 만들게 된 실제 침해사고를 정리한 문서다. 업체명, 서비스명, 도메인, IP, 계정 ID 같은 식별 정보는 모두 지웠다. 날짜는 공격자가 처음 접근한 날을 Day 0으로 둔 상대 날짜로 적었다.
+- Korean: [lessons-learned.ko.md](lessons-learned.ko.md)
+- Design: [design.md](design.md)
 
-## 1. 환경
+This is the incident that led to this project. Company names, service names, domains, IPs, and account IDs have been removed. Dates are relative to the attacker's first access (Day 0).
 
-- AWS 단일 계정에서 운영하는 B2B SaaS 서비스
-- PHP 웹 애플리케이션(EC2)과 일부 컨테이너 서비스(ECS Fargate)
-- 데이터베이스는 Aurora MySQL
-- 공개 ALB 앞에 AWS WAF를 둠
-- 모든 EC2가 같은 IAM 역할을 공유했고, 이 역할의 권한은 사실상 관리자 수준이었음
+## 1. Environment
 
-## 2. 공격 흐름
+- A B2B SaaS service in a single AWS account
+- A PHP web application on EC2, plus some container services on ECS Fargate
+- Aurora MySQL as the database
+- AWS WAF in front of a public ALB
+- Every EC2 instance shared one IAM role, which was effectively an administrator
 
-| 단계 | 시점 | 내용 |
+## 2. Attack chain
+
+| Stage | When | What happened |
 |---|---|---|
-| 정찰 | Day 0 | 웹 애플리케이션의 엔드포인트를 대량으로 열거했다. 권한 검사가 없는 API(IDOR)로 다른 고객의 급여 데이터와 상세 정보를 조회했다 |
-| 파일 읽기 | Day 0 | 다운로드 기능의 경로 조작(LFI)으로 서버의 설정 파일과 소스 코드를 읽었다. 여기서 DB 접속 정보와 앱 암호화 키를 얻었다 |
-| SSRF | Day 0 | 운영 서버에 남아 있던 **테스트용 엔드포인트**가 사용자가 보낸 URL로 HTTP 요청을 보냈다. HTTP 클라이언트의 `base_uri`가 설정돼 있었지만, 절대 URL을 넘기면 무시된다 |
-| 자격증명 탈취 | Day 0 | SSRF로 인스턴스 메타데이터(IMDSv1, `169.254.169.254`)를 호출해 EC2 역할의 임시 자격증명을 얻었다 |
-| 확산 | Day 0~3 | 탈취한 자격증명을 외부 IP 10여 곳에서 사용했다. SSM `SendCommand`(약 190건)와 ECS `ExecuteCommand`(약 20건)로 모든 서버에서 명령을 실행했다 |
-| 반출 | Day 0~3 | DB를 덤프해 S3 버킷의 임시 경로에 올리고 내려받은 뒤 삭제했다. 고객 테이블 전체, 카드 정보, 공동인증서와 개인키, 계좌·잔액이 포함됐다 |
-| 협박 | Day 4 | 회사에 협박 메일이 왔다. **회사는 이 메일을 받고서야 침해를 알았다** |
+| Recon | Day 0 | Mass enumeration of web endpoints. Endpoints without authorization checks (IDOR) returned other customers' payroll data and account details |
+| File read | Day 0 | Path traversal in a download feature (LFI) exposed configuration files and source code, including DB credentials and the application encryption key |
+| SSRF | Day 0 | A **test endpoint left in production** sent HTTP requests to a user-supplied URL. The HTTP client had a `base_uri`, but an absolute URL overrides it |
+| Credential theft | Day 0 | The SSRF called the instance metadata service (IMDSv1, `169.254.169.254`) and returned the EC2 role's temporary credentials |
+| Lateral movement | Day 0–3 | The stolen credentials were used from 10+ external IPs. About 190 SSM `SendCommand` calls and about 20 ECS `ExecuteCommand` sessions ran commands on every server |
+| Exfiltration | Day 0–3 | Database dumps were uploaded to a temporary S3 prefix, downloaded, then deleted. They contained the full customer table, card data, digital certificates with private keys, and bank accounts with balances |
+| Extortion | Day 4 | A ransom email arrived. **This was how the company learned of the breach** |
 
-## 3. 근본 원인과 교훈
+## 3. Root causes and lessons
 
-### 3.1 운영 환경에 남은 테스트 코드
-- 테스트용 컨트롤러가 운영에 배포돼 인증 없이 열려 있었다.
-- **교훈**: 테스트·디버그 경로는 빌드 단계에서 빼야 한다. WAF에도 `/test`, `/debug`, `/webhook` 같은 경로를 기본으로 막는 규칙을 둔다.
+### 3.1 Test code in production
+- A test controller was deployed to production and reachable without authentication.
+- **Lesson**: strip test and debug routes at build time. Also block paths such as `/test`, `/debug`, and `/webhook` in WAF by default.
 
 ### 3.2 IMDSv1
-- 오래된 AWS SDK가 IMDSv2를 지원하지 않아 IMDSv1을 계속 켜 두었다.
-- IMDSv2는 토큰을 먼저 받아야 하므로 단순 SSRF로는 자격증명을 얻을 수 없다.
-- **교훈**: IMDSv2를 필수(`HttpTokens=required`)로 설정하고 hop limit을 1로 둔다. 이를 막는 SDK는 업그레이드 대상 1순위다.
+- An old AWS SDK did not support IMDSv2, so IMDSv1 stayed enabled.
+- IMDSv2 requires fetching a session token first, so a plain SSRF cannot get credentials.
+- **Lesson**: require IMDSv2 (`HttpTokens=required`) with a hop limit of 1. Any SDK that blocks this is the first thing to upgrade.
 
-### 3.3 과도한 역할 권한과 사용 위치 제한 없음
-- 웹 서버 하나가 뚫리자 계정 전체가 뚫렸다. 하나의 역할로 SSM, ECS, S3, Secrets Manager를 모두 쓸 수 있었다.
-- 탈취한 자격증명을 회사 밖 IP에서 써도 아무 제한이 없었다.
-- **교훈**:
-  - 서버마다 역할을 나누고 최소 권한만 준다.
-  - `aws:SourceVpc`, `aws:SourceIp`(NAT IP), `aws:ViaAWSService` 조건을 걸어 **역할을 VPC 밖에서 쓰지 못하게** 막는다(deny).
-  - 실제 대응에서는 이 deny 정책을 거는 순간 외부 사용이 멈췄다.
-  - 원격 실행 권한(`ssm:SendCommand`, `ssm:StartSession`, `ecs:ExecuteCommand`)은 서버 역할에서 뺀다.
+### 3.3 Over-privileged role with no location restriction
+- One compromised web server meant a compromised account: the single role could use SSM, ECS, S3, and Secrets Manager.
+- Nothing stopped the stolen credentials from being used outside the company network.
+- **Lessons**:
+  - Give each workload its own least-privilege role.
+  - Add a deny statement using `aws:SourceVpc`, `aws:SourceIp` (NAT IPs), and `aws:ViaAWSService` so the role **cannot be used outside the VPC**.
+  - During the response, external use stopped the moment this deny policy was attached.
+  - Remove remote execution (`ssm:SendCommand`, `ssm:StartSession`, `ecs:ExecuteCommand`) from server roles.
 
-### 3.4 웹 애플리케이션 권한 검사 누락(IDOR)
-- 로그인한 사용자라면 URL의 회사 번호만 바꿔서 다른 회사 데이터를 조회할 수 있었다.
-- **교훈**: 모든 데이터 접근 API에서 "요청자가 이 리소스의 소유자인가"를 서버에서 검사해야 한다. WAF로는 막을 수 없다.
+### 3.4 Missing authorization checks (IDOR)
+- Any logged-in user could read another company's data by changing the company ID in the URL.
+- **Lesson**: every data-access endpoint must check on the server that the caller owns the resource. A WAF cannot fix this.
 
-### 3.5 민감정보 저장 방식
-- 카드 정보가 결제 연동 **로그 테이블에 평문으로** 남아 있었다. 원 테이블은 암호화돼 있었다.
-- 앱 암호화의 IV가 고정값이었고, 키가 소스와 같은 서버에 있어서 함께 탈취됐다.
-- **교훈**:
-  - 디버그와 연동 로그에서 민감 필드를 지운다(redact).
-  - 암호화 키는 KMS에 두고, 사용할 수 있는 주체를 분리한다.
-  - "암호화돼 있었다"는 키가 함께 탈취되면 아무 의미가 없다.
+### 3.5 How sensitive data was stored
+- Card data sat **in plaintext in an integration log table**, even though the main table was encrypted.
+- Application encryption used a static IV, and the key lived on the same servers as the code, so it was stolen with everything else.
+- **Lessons**:
+  - Redact sensitive fields from debug and integration logs.
+  - Keep encryption keys in KMS, with separate principals allowed to use them.
+  - "It was encrypted" means nothing if the key leaks with the data.
 
-### 3.6 탐지 공백 — 이 프로젝트를 만든 직접적인 이유
-- 공격은 4일간 이어졌지만 **알람이 하나도 울리지 않았다.**
-  - GuardDuty는 비용 때문에 일시 중지돼 있었다. Secrets Manager 호출이 하루 수백만 건이라 CloudTrail 이벤트가 많았고, 그만큼 GuardDuty 비용도 컸다.
-  - WAF 로그는 오래전부터 수집되지 않고 있었다.
-  - IAM 변경, 원격 명령, 외부 IP에서의 역할 사용에 대한 알람이 없었다.
-- CloudTrail 기록은 모두 남아 있었다. **기록은 있는데 아무도 보지 않았다.**
-- **교훈**: 비싼 탐지 서비스를 못 쓰더라도, CloudTrail → EventBridge → SNS만으로 핵심 신호는 **거의 무료로** 받을 수 있다. 이 사고에서 나온 신호는 아래와 같다.
+### 3.6 The detection gap — why this project exists
+- The attack ran for four days and **not one alarm fired.**
+  - GuardDuty was suspended to save money. Secrets Manager was called millions of times a day, which inflated CloudTrail volume and therefore GuardDuty's price.
+  - WAF logging had silently stopped long before.
+  - There were no alarms on IAM changes, remote command execution, or role use from outside IPs.
+- CloudTrail recorded every step. **The data was there; nobody was watching.**
+- **Lesson**: even without paid detection, CloudTrail → EventBridge → SNS delivers the key signals **almost for free**. Signals from this incident:
 
-| 이 사고에서 나온 신호 | 탐지 규칙 |
+| Signal in this incident | Rule |
 |---|---|
-| 서버 역할이 VPC 밖에서 쓰임 → deny 정책 적용 후 AccessDenied | R1 |
-| 서버 역할이 SSM 명령, ECS Exec 실행 | R2 |
-| 공격자의 IAM 조회와 변경 시도 | R3 |
-| S3 임시 경로에 덤프를 올렸다가 삭제 | R4 (일부만 탐지. 데이터 이벤트가 필요해 v0.1 범위 밖) |
-| 취약 경로 재시도 (WAF 차단) | R6 |
+| First call with stolen server credentials from an outside IP (`GetCallerIdentity`) | R2 `role-offsite` |
+| External use after the deny policy was attached → AccessDenied | R1 `role-denied` |
+| SSM commands and ECS Exec using the server role | R3 `remote-exec` |
+| IAM reads and change attempts | R4 `iam-persistence` (changes only) |
+| Logging and detection services were off | R5 `defense-evasion` (fires when they are switched off) |
+| Dumps uploaded to a temporary S3 prefix and deleted | Data events, out of scope for v0.1. The aim is to catch R2/R3 earlier |
+| Retries against blocked vulnerable paths | R8 `waf-spike` |
 
-### 3.7 그래도 도움이 된 것
-- **S3 버전 관리**: 공격자가 지운 덤프 파일이 이전 버전으로 남아 있어서 유출 범위를 확정할 수 있었다.
-- **ALB 접근 로그**: 공격자 IP와 호출 경로, 시각을 초 단위로 재구성할 수 있었다.
-- **DB에 저장된 세션**: 공격 요청 시각과 세션 생성 시각을 맞춰 공격자가 쓴 웹 계정을 특정했다.
-- **CloudTrail 다중 리전 트레일**: `ec2RoleDelivery` 필드로 IMDSv1 경유 자격증명임을 확인했다.
+### 3.7 What helped
+- **S3 versioning**: the dumps the attacker deleted survived as noncurrent versions, which made it possible to confirm exactly what leaked.
+- **ALB access logs**: attacker IPs, paths, and timing could be reconstructed to the second.
+- **Database-backed sessions**: matching attack request times to session creation times identified the web accounts the attacker used.
+- **Multi-region CloudTrail trail**: the `ec2RoleDelivery` field confirmed the credentials came through IMDSv1.
 
-## 4. 대응 과정에서의 교훈
+## 4. Lessons from the response itself
 
-1. **내부 IP 목록을 미리 문서로 만들어 둔다.** 회사 사무실 IP의 정상 대량 조회를 공격으로 오판해 약 2시간 동안 차단했다.
-2. **세션 일괄 무효화나 자격증명 교체의 영향을 먼저 확인한다.** 역할 세션을 무효화하면 정상 서버의 임시 자격증명도 함께 끊긴다.
-3. **분석 중 개인정보를 화면이나 로그에 출력하지 않는다.** 형식과 건수만 본다. 증거는 접근이 통제된 별도 저장소에 둔다.
-4. **"읽기 전용 복제본"이 실제로 있는지 확인한다.** 리더 인스턴스를 지우면 reader 엔드포인트가 writer로 연결된다. 분석용 무거운 쿼리가 운영 DB에서 실행될 수 있다.
-5. **증거를 먼저 보존하고 정리는 나중에 한다.** 서버의 공격자 파일을 지우기 전에 EBS 스냅샷부터 만든다.
-6. **유출 범위는 "확인된 최소 범위"로 표현한다.** SSM 명령 출력이나 대화형 세션처럼 기록이 남지 않는 경로가 있다.
+1. **Keep an inventory of your own IPs.** The office IP doing legitimate bulk queries was mistaken for the attacker and blocked for about two hours.
+2. **Check the blast radius before revoking sessions or rotating credentials.** Revoking a role's sessions also cuts off healthy servers' temporary credentials.
+3. **Never print personal data while analyzing.** Look at formats and counts only. Keep evidence in a separate, access-controlled store.
+4. **Confirm the "read replica" actually exists.** After a reader instance is deleted, the reader endpoint points to the writer, and heavy analysis queries run on production.
+5. **Preserve evidence first, clean up later.** Take EBS snapshots before deleting attacker files on servers.
+6. **Report the leak as "the confirmed minimum".** Some channels leave no record, such as SSM command output and interactive sessions.
