@@ -12,18 +12,8 @@ RULES_DIR = Path(__file__).resolve().parent.parent / "rules"
 SENTINEL = "__none__"
 TOKEN = re.compile(r"^@@([a-z_]+)@@$")
 
-INPUT_PATHS = {
-    "eventSource": "$.detail.eventSource",
-    "eventName": "$.detail.eventName",
-    "principal": "$.detail.userIdentity.arn",
-    "principalType": "$.detail.userIdentity.type",
-    "sourceIPAddress": "$.detail.sourceIPAddress",
-    "region": "$.region",
-    "time": "$.time",
-    "errorCode": "$.detail.errorCode",
-    "eventId": "$.detail.eventID",
-    "account": "$.account",
-}
+MESSAGE = json.loads((RULES_DIR / "message.json").read_text())
+INPUT_PATHS = MESSAGE["input_paths"]
 
 
 def load_rules():
@@ -73,17 +63,8 @@ def anchor(rule):
 
 
 def message_template(rule, runbook_url):
-    return "\n".join([
-        f"[aws-breach-alarms] {rule['severity']} {rule['id']} {rule['slug']}: {rule['title']}",
-        "",
-        "What : <eventSource> <eventName>",
-        "Who  : <principal> (<principalType>)",
-        "From : <sourceIPAddress> (<region>)",
-        "When : <time>",
-        "Error: <errorCode>",
-        "Acct : <account>",
-        "Event: <eventId>",
-        "",
-        f"Why it matters: {rule['why']}",
-        f"Runbook: {runbook_url}#{anchor(rule)}",
-    ])
+    fields = {**rule, "runbook_url": runbook_url, "anchor": anchor(rule)}
+    text = "\n".join(MESSAGE["template"])
+    for key in ("severity", "id", "slug", "title", "why", "runbook_url", "anchor"):
+        text = text.replace("{" + key + "}", fields[key])
+    return text

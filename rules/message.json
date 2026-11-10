@@ -1,0 +1,28 @@
+{
+  "input_paths": {
+    "eventSource": "$.detail.eventSource",
+    "eventName": "$.detail.eventName",
+    "principal": "$.detail.userIdentity.arn",
+    "principalType": "$.detail.userIdentity.type",
+    "sourceIPAddress": "$.detail.sourceIPAddress",
+    "region": "$.region",
+    "time": "$.time",
+    "errorCode": "$.detail.errorCode",
+    "eventId": "$.detail.eventID",
+    "account": "$.account"
+  },
+  "template": [
+    "[aws-breach-alarms] {severity} {id} {slug}: {title}",
+    "",
+    "What : <eventSource> <eventName>",
+    "Who  : <principal> (<principalType>)",
+    "From : <sourceIPAddress> (<region>)",
+    "When : <time>",
+    "Error: <errorCode>",
+    "Acct : <account>",
+    "Event: <eventId>",
+    "",
+    "Why it matters: {why}",
+    "Runbook: {runbook_url}#{anchor}"
+  ]
+}

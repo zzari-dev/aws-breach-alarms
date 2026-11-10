@@ -1,0 +1,1561 @@
+{
+  "AWSTemplateFormatVersion": "2010-09-09",
+  "Description": "aws-breach-alarms: near-zero-cost CloudTrail breach alarms (generated from rules/*.json - do not edit)",
+  "Parameters": {
+    "Mode": {
+      "Type": "String",
+      "AllowedValues": [
+        "home",
+        "forwarder"
+      ],
+      "Default": "home",
+      "Description": "home: sends alerts (deploy once). forwarder: forwards matched events to the home region."
+    },
+    "HomeRegion": {
+      "Type": "String",
+      "Default": "",
+      "Description": "Forwarder only: the region of the home stack."
+    },
+    "NamePrefix": {
+      "Type": "String",
+      "Default": "breach-alarms",
+      "MinLength": 1,
+      "AllowedPattern": "[A-Za-z0-9_.-]+",
+      "Description": "Prefix for resource names. R5b watches rules with this prefix."
+    },
+    "AlertEmail": {
+      "Type": "String",
+      "Default": "",
+      "Description": "Home only: email address that receives alerts (confirm the subscription once)."
+    },
+    "RunbookUrl": {
+      "Type": "String",
+      "Default": "https://github.com/zzari-dev/aws-breach-alarms/blob/main/docs/runbook.md",
+      "Description": "Base URL of the runbook linked from alerts."
+    },
+    "MonitoredRoleNames": {
+      "Type": "CommaDelimitedList",
+      "Default": "",
+      "Description": "Names of IAM roles to watch for R1/R2 (e.g. EC2 instance or ECS task roles). Empty disables R1/R2."
+    },
+    "AllowedSourcePatterns": {
+      "Type": "CommaDelimitedList",
+      "Default": "",
+      "Description": "R2: source IP wildcards where monitored roles may be used, e.g. 203.0.113.10,10.*,*.amazonaws.com,AWS Internal. Empty disables R2."
+    },
+    "OperatorPrincipalPatterns": {
+      "Type": "CommaDelimitedList",
+      "Default": "arn:aws:sts::*:assumed-role/AWSReservedSSO_*,arn:aws:sts::*:assumed-role/AWSServiceRoleForAmazonSSM/*",
+      "Description": "R3: principal ARN wildcards allowed to run SSM commands, sessions and ECS Exec."
+    },
+    "DeployerPrincipalPatterns": {
+      "Type": "CommaDelimitedList",
+      "Default": "",
+      "Description": "R4/R6: principal ARN wildcards (CI, Terraform) whose IAM, sharing and bucket-policy changes are expected."
+    },
+    "EnableRoleDenied": {
+      "Type": "String",
+      "AllowedValues": [
+        "true",
+        "false"
+      ],
+      "Default": "true",
+      "Description": "Create R1 role-denied."
+    },
+    "EnableRoleOffsite": {
+      "Type": "String",
+      "AllowedValues": [
+        "true",
+        "false"
+      ],
+      "Default": "true",
+      "Description": "Create R2 role-offsite."
+    },
+    "EnableRemoteExec": {
+      "Type": "String",
+      "AllowedValues": [
+        "true",
+        "false"
+      ],
+      "Default": "true",
+      "Description": "Create R3 remote-exec."
+    },
+    "EnableIamPersistence": {
+      "Type": "String",
+      "AllowedValues": [
+        "true",
+        "false"
+      ],
+      "Default": "true",
+      "Description": "Create R4 iam-persistence."
+    },
+    "EnableDefenseEvasion": {
+      "Type": "String",
+      "AllowedValues": [
+        "true",
+        "false"
+      ],
+      "Default": "true",
+      "Description": "Create R5 defense-evasion."
+    },
+    "EnableAlarmTamper": {
+      "Type": "String",
+      "AllowedValues": [
+        "true",
+        "false"
+      ],
+      "Default": "true",
+      "Description": "Create R5b alarm-tamper."
+    },
+    "EnableExfilPrep": {
+      "Type": "String",
+      "AllowedValues": [
+        "true",
+        "false"
+      ],
+      "Default": "true",
+      "Description": "Create R6 exfil-prep."
+    },
+    "EnableConsoleSignin": {
+      "Type": "String",
+      "AllowedValues": [
+        "true",
+        "false"
+      ],
+      "Default": "true",
+      "Description": "Create R7 console-signin."
+    },
+    "WafWebAclName": {
+      "Type": "String",
+      "Default": "",
+      "Description": "R8: WebACL name. Empty disables R8."
+    },
+    "WafRuleName": {
+      "Type": "String",
+      "Default": "",
+      "Description": "R8: rule (metric) name inside the WebACL."
+    },
+    "WafThreshold": {
+      "Type": "Number",
+      "Default": 10,
+      "Description": "R8: blocked requests per 5 minutes that trigger the alarm."
+    },
+    "KmsKeyArn": {
+      "Type": "String",
+      "Default": "",
+      "Description": "Optional KMS key for the SNS topic and DLQ."
+    }
+  },
+  "Conditions": {
+    "IsHome": {
+      "Fn::Equals": [
+        {
+          "Ref": "Mode"
+        },
+        "home"
+      ]
+    },
+    "IsForwarder": {
+      "Fn::Not": [
+        {
+          "Condition": "IsHome"
+        }
+      ]
+    },
+    "HasAlertEmail": {
+      "Fn::And": [
+        {
+          "Condition": "IsHome"
+        },
+        {
+          "Fn::Not": [
+            {
+              "Fn::Equals": [
+                {
+                  "Ref": "AlertEmail"
+                },
+                ""
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "HasKms": {
+      "Fn::Not": [
+        {
+          "Fn::Equals": [
+            {
+              "Ref": "KmsKeyArn"
+            },
+            ""
+          ]
+        }
+      ]
+    },
+    "HasWafAlarm": {
+      "Fn::And": [
+        {
+          "Condition": "IsHome"
+        },
+        {
+          "Fn::Not": [
+            {
+              "Fn::Equals": [
+                {
+                  "Ref": "WafWebAclName"
+                },
+                ""
+              ]
+            }
+          ]
+        },
+        {
+          "Fn::Not": [
+            {
+              "Fn::Equals": [
+                {
+                  "Ref": "WafRuleName"
+                },
+                ""
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "HasMonitoredRoleNames": {
+      "Fn::Not": [
+        {
+          "Fn::Equals": [
+            {
+              "Fn::Join": [
+                "",
+                {
+                  "Ref": "MonitoredRoleNames"
+                }
+              ]
+            },
+            ""
+          ]
+        }
+      ]
+    },
+    "HasAllowedSourcePatterns": {
+      "Fn::Not": [
+        {
+          "Fn::Equals": [
+            {
+              "Fn::Join": [
+                "",
+                {
+                  "Ref": "AllowedSourcePatterns"
+                }
+              ]
+            },
+            ""
+          ]
+        }
+      ]
+    },
+    "HasOperatorPrincipalPatterns": {
+      "Fn::Not": [
+        {
+          "Fn::Equals": [
+            {
+              "Fn::Join": [
+                "",
+                {
+                  "Ref": "OperatorPrincipalPatterns"
+                }
+              ]
+            },
+            ""
+          ]
+        }
+      ]
+    },
+    "HasDeployerPrincipalPatterns": {
+      "Fn::Not": [
+        {
+          "Fn::Equals": [
+            {
+              "Fn::Join": [
+                "",
+                {
+                  "Ref": "DeployerPrincipalPatterns"
+                }
+              ]
+            },
+            ""
+          ]
+        }
+      ]
+    },
+    "CreateRoleDenied": {
+      "Fn::And": [
+        {
+          "Fn::Equals": [
+            {
+              "Ref": "EnableRoleDenied"
+            },
+            "true"
+          ]
+        },
+        {
+          "Condition": "HasMonitoredRoleNames"
+        }
+      ]
+    },
+    "CreateRoleOffsite": {
+      "Fn::And": [
+        {
+          "Fn::Equals": [
+            {
+              "Ref": "EnableRoleOffsite"
+            },
+            "true"
+          ]
+        },
+        {
+          "Condition": "HasMonitoredRoleNames"
+        },
+        {
+          "Condition": "HasAllowedSourcePatterns"
+        }
+      ]
+    },
+    "CreateRemoteExec": {
+      "Fn::Equals": [
+        {
+          "Ref": "EnableRemoteExec"
+        },
+        "true"
+      ]
+    },
+    "CreateIamPersistence": {
+      "Fn::Equals": [
+        {
+          "Ref": "EnableIamPersistence"
+        },
+        "true"
+      ]
+    },
+    "CreateDefenseEvasion": {
+      "Fn::Equals": [
+        {
+          "Ref": "EnableDefenseEvasion"
+        },
+        "true"
+      ]
+    },
+    "CreateAlarmTamper": {
+      "Fn::Equals": [
+        {
+          "Ref": "EnableAlarmTamper"
+        },
+        "true"
+      ]
+    },
+    "CreateExfilPrep": {
+      "Fn::Equals": [
+        {
+          "Ref": "EnableExfilPrep"
+        },
+        "true"
+      ]
+    },
+    "CreateConsoleSignin": {
+      "Fn::Equals": [
+        {
+          "Ref": "EnableConsoleSignin"
+        },
+        "true"
+      ]
+    }
+  },
+  "Resources": {
+    "AlertTopic": {
+      "Type": "AWS::SNS::Topic",
+      "Condition": "IsHome",
+      "Properties": {
+        "TopicName": {
+          "Fn::Sub": "${NamePrefix}-alerts"
+        },
+        "KmsMasterKeyId": {
+          "Fn::If": [
+            "HasKms",
+            {
+              "Ref": "KmsKeyArn"
+            },
+            {
+              "Ref": "AWS::NoValue"
+            }
+          ]
+        }
+      }
+    },
+    "AlertTopicPolicy": {
+      "Type": "AWS::SNS::TopicPolicy",
+      "Condition": "IsHome",
+      "Properties": {
+        "Topics": [
+          {
+            "Ref": "AlertTopic"
+          }
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "AllowEventBridgeAndCloudWatch",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": [
+                  "events.amazonaws.com",
+                  "cloudwatch.amazonaws.com"
+                ]
+              },
+              "Action": "sns:Publish",
+              "Resource": {
+                "Ref": "AlertTopic"
+              },
+              "Condition": {
+                "StringEquals": {
+                  "aws:SourceAccount": {
+                    "Ref": "AWS::AccountId"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "AlertSubscription": {
+      "Type": "AWS::SNS::Subscription",
+      "Condition": "HasAlertEmail",
+      "Properties": {
+        "TopicArn": {
+          "Ref": "AlertTopic"
+        },
+        "Protocol": "email",
+        "Endpoint": {
+          "Ref": "AlertEmail"
+        }
+      }
+    },
+    "DeadLetterQueue": {
+      "Type": "AWS::SQS::Queue",
+      "Condition": "IsHome",
+      "Properties": {
+        "QueueName": {
+          "Fn::Sub": "${NamePrefix}-dlq"
+        },
+        "MessageRetentionPeriod": 1209600,
+        "KmsMasterKeyId": {
+          "Fn::If": [
+            "HasKms",
+            {
+              "Ref": "KmsKeyArn"
+            },
+            {
+              "Ref": "AWS::NoValue"
+            }
+          ]
+        },
+        "SqsManagedSseEnabled": {
+          "Fn::If": [
+            "HasKms",
+            {
+              "Ref": "AWS::NoValue"
+            },
+            true
+          ]
+        }
+      }
+    },
+    "DeadLetterQueuePolicy": {
+      "Type": "AWS::SQS::QueuePolicy",
+      "Condition": "IsHome",
+      "Properties": {
+        "Queues": [
+          {
+            "Ref": "DeadLetterQueue"
+          }
+        ],
+        "PolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "AllowEventBridge",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "events.amazonaws.com"
+              },
+              "Action": "sqs:SendMessage",
+              "Resource": {
+                "Fn::GetAtt": [
+                  "DeadLetterQueue",
+                  "Arn"
+                ]
+              },
+              "Condition": {
+                "StringEquals": {
+                  "aws:SourceAccount": {
+                    "Ref": "AWS::AccountId"
+                  }
+                }
+              }
+            }
+          ]
+        }
+      }
+    },
+    "DeliveryFailureAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Condition": "IsHome",
+      "Properties": {
+        "AlarmName": {
+          "Fn::Sub": "${NamePrefix}-h1-delivery-failure"
+        },
+        "AlarmDescription": "[aws-breach-alarms] H1: an alert could not be delivered and is waiting in the dead-letter queue.",
+        "Namespace": "AWS/SQS",
+        "MetricName": "ApproximateNumberOfMessagesVisible",
+        "Dimensions": [
+          {
+            "Name": "QueueName",
+            "Value": {
+              "Fn::GetAtt": [
+                "DeadLetterQueue",
+                "QueueName"
+              ]
+            }
+          }
+        ],
+        "Statistic": "Maximum",
+        "Period": 300,
+        "EvaluationPeriods": 1,
+        "Threshold": 0,
+        "ComparisonOperator": "GreaterThanThreshold",
+        "TreatMissingData": "notBreaching",
+        "AlarmActions": [
+          {
+            "Ref": "AlertTopic"
+          }
+        ]
+      }
+    },
+    "WafSpikeAlarm": {
+      "Type": "AWS::CloudWatch::Alarm",
+      "Condition": "HasWafAlarm",
+      "Properties": {
+        "AlarmName": {
+          "Fn::Sub": "${NamePrefix}-r8-waf-spike"
+        },
+        "AlarmDescription": "[aws-breach-alarms] R8: requests blocked by the watched WAF rule spiked.",
+        "Namespace": "AWS/WAFV2",
+        "MetricName": "BlockedRequests",
+        "Dimensions": [
+          {
+            "Name": "WebACL",
+            "Value": {
+              "Ref": "WafWebAclName"
+            }
+          },
+          {
+            "Name": "Rule",
+            "Value": {
+              "Ref": "WafRuleName"
+            }
+          },
+          {
+            "Name": "Region",
+            "Value": {
+              "Ref": "AWS::Region"
+            }
+          }
+        ],
+        "Statistic": "Sum",
+        "Period": 300,
+        "EvaluationPeriods": 1,
+        "Threshold": {
+          "Ref": "WafThreshold"
+        },
+        "ComparisonOperator": "GreaterThanOrEqualToThreshold",
+        "TreatMissingData": "notBreaching",
+        "AlarmActions": [
+          {
+            "Ref": "AlertTopic"
+          }
+        ]
+      }
+    },
+    "ForwarderRole": {
+      "Type": "AWS::IAM::Role",
+      "Condition": "IsForwarder",
+      "Properties": {
+        "RoleName": {
+          "Fn::Sub": "${NamePrefix}-forwarder-${AWS::Region}"
+        },
+        "AssumeRolePolicyDocument": {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Effect": "Allow",
+              "Principal": {
+                "Service": "events.amazonaws.com"
+              },
+              "Action": "sts:AssumeRole",
+              "Condition": {
+                "StringEquals": {
+                  "aws:SourceAccount": {
+                    "Ref": "AWS::AccountId"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "Policies": [
+          {
+            "PolicyName": "put-events-to-home-bus",
+            "PolicyDocument": {
+              "Version": "2012-10-17",
+              "Statement": [
+                {
+                  "Effect": "Allow",
+                  "Action": "events:PutEvents",
+                  "Resource": {
+                    "Fn::Sub": "arn:${AWS::Partition}:events:${HomeRegion}:${AWS::AccountId}:event-bus/default"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "RuleRoleDenied": {
+      "Type": "AWS::Events::Rule",
+      "Condition": "CreateRoleDenied",
+      "Properties": {
+        "Name": {
+          "Fn::Sub": "${NamePrefix}-r1-role-denied"
+        },
+        "Description": "[aws-breach-alarms] R1: Monitored role was denied access",
+        "State": "ENABLED_WITH_ALL_CLOUDTRAIL_MANAGEMENT_EVENTS",
+        "EventPattern": {
+          "detail-type": [
+            "AWS API Call via CloudTrail"
+          ],
+          "detail": {
+            "userIdentity": {
+              "type": [
+                "AssumedRole"
+              ],
+              "sessionContext": {
+                "sessionIssuer": {
+                  "userName": {
+                    "Ref": "MonitoredRoleNames"
+                  }
+                }
+              }
+            },
+            "errorCode": [
+              "AccessDenied",
+              "AccessDeniedException",
+              "Client.UnauthorizedOperation",
+              "UnauthorizedOperation"
+            ]
+          }
+        },
+        "Targets": [
+          {
+            "Fn::If": [
+              "IsHome",
+              {
+                "Id": "alert",
+                "Arn": {
+                  "Ref": "AlertTopic"
+                },
+                "DeadLetterConfig": {
+                  "Arn": {
+                    "Fn::GetAtt": [
+                      "DeadLetterQueue",
+                      "Arn"
+                    ]
+                  }
+                },
+                "InputTransformer": {
+                  "InputPathsMap": {
+                    "eventSource": "$.detail.eventSource",
+                    "eventName": "$.detail.eventName",
+                    "principal": "$.detail.userIdentity.arn",
+                    "principalType": "$.detail.userIdentity.type",
+                    "sourceIPAddress": "$.detail.sourceIPAddress",
+                    "region": "$.region",
+                    "time": "$.time",
+                    "errorCode": "$.detail.errorCode",
+                    "eventId": "$.detail.eventID",
+                    "account": "$.account"
+                  },
+                  "InputTemplate": {
+                    "Fn::Sub": "[aws-breach-alarms] HIGH R1 role-denied: Monitored role was denied access\n\nWhat : <eventSource> <eventName>\nWho  : <principal> (<principalType>)\nFrom : <sourceIPAddress> (<region>)\nWhen : <time>\nError: <errorCode>\nAcct : <account>\nEvent: <eventId>\n\nWhy it matters: Healthy workloads rarely hit authorization errors. With a deny-outside-VPC policy on the role, stolen credentials used elsewhere always end in AccessDenied.\nRunbook: ${RunbookUrl}#r1-role-denied"
+                  }
+                }
+              },
+              {
+                "Id": "forward",
+                "Arn": {
+                  "Fn::Sub": "arn:${AWS::Partition}:events:${HomeRegion}:${AWS::AccountId}:event-bus/default"
+                },
+                "RoleArn": {
+                  "Fn::GetAtt": [
+                    "ForwarderRole",
+                    "Arn"
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "RuleRoleOffsite": {
+      "Type": "AWS::Events::Rule",
+      "Condition": "CreateRoleOffsite",
+      "Properties": {
+        "Name": {
+          "Fn::Sub": "${NamePrefix}-r2-role-offsite"
+        },
+        "Description": "[aws-breach-alarms] R2: Monitored role used from an unexpected source",
+        "State": "ENABLED_WITH_ALL_CLOUDTRAIL_MANAGEMENT_EVENTS",
+        "EventPattern": {
+          "detail-type": [
+            "AWS API Call via CloudTrail"
+          ],
+          "detail": {
+            "userIdentity": {
+              "type": [
+                "AssumedRole"
+              ],
+              "sessionContext": {
+                "sessionIssuer": {
+                  "userName": {
+                    "Ref": "MonitoredRoleNames"
+                  }
+                }
+              }
+            },
+            "sourceIPAddress": [
+              {
+                "anything-but": {
+                  "wildcard": {
+                    "Ref": "AllowedSourcePatterns"
+                  }
+                }
+              }
+            ]
+          }
+        },
+        "Targets": [
+          {
+            "Fn::If": [
+              "IsHome",
+              {
+                "Id": "alert",
+                "Arn": {
+                  "Ref": "AlertTopic"
+                },
+                "DeadLetterConfig": {
+                  "Arn": {
+                    "Fn::GetAtt": [
+                      "DeadLetterQueue",
+                      "Arn"
+                    ]
+                  }
+                },
+                "InputTransformer": {
+                  "InputPathsMap": {
+                    "eventSource": "$.detail.eventSource",
+                    "eventName": "$.detail.eventName",
+                    "principal": "$.detail.userIdentity.arn",
+                    "principalType": "$.detail.userIdentity.type",
+                    "sourceIPAddress": "$.detail.sourceIPAddress",
+                    "region": "$.region",
+                    "time": "$.time",
+                    "errorCode": "$.detail.errorCode",
+                    "eventId": "$.detail.eventID",
+                    "account": "$.account"
+                  },
+                  "InputTemplate": {
+                    "Fn::Sub": "[aws-breach-alarms] HIGH R2 role-offsite: Monitored role used from an unexpected source\n\nWhat : <eventSource> <eventName>\nWho  : <principal> (<principalType>)\nFrom : <sourceIPAddress> (<region>)\nWhen : <time>\nError: <errorCode>\nAcct : <account>\nEvent: <eventId>\n\nWhy it matters: Instance and task role credentials should only be used from your own network. A call from anywhere else usually means the credentials were stolen, for example through SSRF against the instance metadata service.\nRunbook: ${RunbookUrl}#r2-role-offsite"
+                  }
+                }
+              },
+              {
+                "Id": "forward",
+                "Arn": {
+                  "Fn::Sub": "arn:${AWS::Partition}:events:${HomeRegion}:${AWS::AccountId}:event-bus/default"
+                },
+                "RoleArn": {
+                  "Fn::GetAtt": [
+                    "ForwarderRole",
+                    "Arn"
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "RuleRemoteExec": {
+      "Type": "AWS::Events::Rule",
+      "Condition": "CreateRemoteExec",
+      "Properties": {
+        "Name": {
+          "Fn::Sub": "${NamePrefix}-r3-remote-exec"
+        },
+        "Description": "[aws-breach-alarms] R3: Remote command execution by an untrusted principal",
+        "State": "ENABLED",
+        "EventPattern": {
+          "detail-type": [
+            "AWS API Call via CloudTrail"
+          ],
+          "source": [
+            "aws.ssm",
+            "aws.ecs"
+          ],
+          "detail": {
+            "eventName": [
+              "SendCommand",
+              "StartSession",
+              "ResumeSession",
+              "ExecuteCommand"
+            ],
+            "userIdentity": {
+              "arn": [
+                {
+                  "anything-but": {
+                    "wildcard": {
+                      "Fn::If": [
+                        "HasOperatorPrincipalPatterns",
+                        {
+                          "Ref": "OperatorPrincipalPatterns"
+                        },
+                        [
+                          "__none__"
+                        ]
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "Targets": [
+          {
+            "Fn::If": [
+              "IsHome",
+              {
+                "Id": "alert",
+                "Arn": {
+                  "Ref": "AlertTopic"
+                },
+                "DeadLetterConfig": {
+                  "Arn": {
+                    "Fn::GetAtt": [
+                      "DeadLetterQueue",
+                      "Arn"
+                    ]
+                  }
+                },
+                "InputTransformer": {
+                  "InputPathsMap": {
+                    "eventSource": "$.detail.eventSource",
+                    "eventName": "$.detail.eventName",
+                    "principal": "$.detail.userIdentity.arn",
+                    "principalType": "$.detail.userIdentity.type",
+                    "sourceIPAddress": "$.detail.sourceIPAddress",
+                    "region": "$.region",
+                    "time": "$.time",
+                    "errorCode": "$.detail.errorCode",
+                    "eventId": "$.detail.eventID",
+                    "account": "$.account"
+                  },
+                  "InputTemplate": {
+                    "Fn::Sub": "[aws-breach-alarms] HIGH R3 remote-exec: Remote command execution by an untrusted principal\n\nWhat : <eventSource> <eventName>\nWho  : <principal> (<principalType>)\nFrom : <sourceIPAddress> (<region>)\nWhen : <time>\nError: <errorCode>\nAcct : <account>\nEvent: <eventId>\n\nWhy it matters: SSM Run Command, Session Manager and ECS Exec give shell access to your servers and containers. Attackers holding stolen credentials use them to move to every host.\nRunbook: ${RunbookUrl}#r3-remote-exec"
+                  }
+                }
+              },
+              {
+                "Id": "forward",
+                "Arn": {
+                  "Fn::Sub": "arn:${AWS::Partition}:events:${HomeRegion}:${AWS::AccountId}:event-bus/default"
+                },
+                "RoleArn": {
+                  "Fn::GetAtt": [
+                    "ForwarderRole",
+                    "Arn"
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "RuleIamPersistence": {
+      "Type": "AWS::Events::Rule",
+      "Condition": "CreateIamPersistence",
+      "Properties": {
+        "Name": {
+          "Fn::Sub": "${NamePrefix}-r4-iam-persistence"
+        },
+        "Description": "[aws-breach-alarms] R4: IAM change that can create a backdoor",
+        "State": "ENABLED",
+        "EventPattern": {
+          "detail-type": [
+            "AWS API Call via CloudTrail"
+          ],
+          "source": [
+            "aws.iam"
+          ],
+          "detail": {
+            "eventName": [
+              "CreateUser",
+              "CreateAccessKey",
+              "CreateLoginProfile",
+              "UpdateLoginProfile",
+              "AttachUserPolicy",
+              "PutUserPolicy",
+              "AttachRolePolicy",
+              "PutRolePolicy",
+              "AttachGroupPolicy",
+              "PutGroupPolicy",
+              "AddUserToGroup",
+              "CreateRole",
+              "UpdateAssumeRolePolicy",
+              "CreatePolicyVersion",
+              "SetDefaultPolicyVersion",
+              "DeactivateMFADevice",
+              "DeleteVirtualMFADevice",
+              "CreateOpenIDConnectProvider",
+              "CreateSAMLProvider"
+            ],
+            "userIdentity": {
+              "arn": [
+                {
+                  "anything-but": {
+                    "wildcard": {
+                      "Fn::If": [
+                        "HasDeployerPrincipalPatterns",
+                        {
+                          "Ref": "DeployerPrincipalPatterns"
+                        },
+                        [
+                          "__none__"
+                        ]
+                      ]
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        },
+        "Targets": [
+          {
+            "Fn::If": [
+              "IsHome",
+              {
+                "Id": "alert",
+                "Arn": {
+                  "Ref": "AlertTopic"
+                },
+                "DeadLetterConfig": {
+                  "Arn": {
+                    "Fn::GetAtt": [
+                      "DeadLetterQueue",
+                      "Arn"
+                    ]
+                  }
+                },
+                "InputTransformer": {
+                  "InputPathsMap": {
+                    "eventSource": "$.detail.eventSource",
+                    "eventName": "$.detail.eventName",
+                    "principal": "$.detail.userIdentity.arn",
+                    "principalType": "$.detail.userIdentity.type",
+                    "sourceIPAddress": "$.detail.sourceIPAddress",
+                    "region": "$.region",
+                    "time": "$.time",
+                    "errorCode": "$.detail.errorCode",
+                    "eventId": "$.detail.eventID",
+                    "account": "$.account"
+                  },
+                  "InputTemplate": {
+                    "Fn::Sub": "[aws-breach-alarms] HIGH R4 iam-persistence: IAM change that can create a backdoor\n\nWhat : <eventSource> <eventName>\nWho  : <principal> (<principalType>)\nFrom : <sourceIPAddress> (<region>)\nWhen : <time>\nError: <errorCode>\nAcct : <account>\nEvent: <eventId>\n\nWhy it matters: New users, access keys, login profiles, trust policy edits and policy attachments are how attackers keep access after the original hole is closed.\nRunbook: ${RunbookUrl}#r4-iam-persistence"
+                  }
+                }
+              },
+              {
+                "Id": "forward",
+                "Arn": {
+                  "Fn::Sub": "arn:${AWS::Partition}:events:${HomeRegion}:${AWS::AccountId}:event-bus/default"
+                },
+                "RoleArn": {
+                  "Fn::GetAtt": [
+                    "ForwarderRole",
+                    "Arn"
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "RuleDefenseEvasion": {
+      "Type": "AWS::Events::Rule",
+      "Condition": "CreateDefenseEvasion",
+      "Properties": {
+        "Name": {
+          "Fn::Sub": "${NamePrefix}-r5-defense-evasion"
+        },
+        "Description": "[aws-breach-alarms] R5: Logging or threat detection was switched off",
+        "State": "ENABLED",
+        "EventPattern": {
+          "detail-type": [
+            "AWS API Call via CloudTrail"
+          ],
+          "detail": {
+            "$or": [
+              {
+                "eventSource": [
+                  "cloudtrail.amazonaws.com"
+                ],
+                "eventName": [
+                  "StopLogging",
+                  "DeleteTrail",
+                  "UpdateTrail",
+                  "PutEventSelectors",
+                  "PutInsightSelectors"
+                ]
+              },
+              {
+                "eventSource": [
+                  "guardduty.amazonaws.com"
+                ],
+                "eventName": [
+                  "DeleteDetector",
+                  "UpdateDetector",
+                  "DisassociateFromMasterAccount",
+                  "DisassociateFromAdministratorAccount"
+                ]
+              },
+              {
+                "eventSource": [
+                  "config.amazonaws.com"
+                ],
+                "eventName": [
+                  "StopConfigurationRecorder",
+                  "DeleteConfigurationRecorder",
+                  "DeleteDeliveryChannel"
+                ]
+              },
+              {
+                "eventSource": [
+                  "ec2.amazonaws.com"
+                ],
+                "eventName": [
+                  "DeleteFlowLogs"
+                ]
+              },
+              {
+                "eventSource": [
+                  "wafv2.amazonaws.com"
+                ],
+                "eventName": [
+                  "DeleteLoggingConfiguration"
+                ]
+              },
+              {
+                "eventSource": [
+                  "securityhub.amazonaws.com"
+                ],
+                "eventName": [
+                  "DisableSecurityHub"
+                ]
+              }
+            ]
+          }
+        },
+        "Targets": [
+          {
+            "Fn::If": [
+              "IsHome",
+              {
+                "Id": "alert",
+                "Arn": {
+                  "Ref": "AlertTopic"
+                },
+                "DeadLetterConfig": {
+                  "Arn": {
+                    "Fn::GetAtt": [
+                      "DeadLetterQueue",
+                      "Arn"
+                    ]
+                  }
+                },
+                "InputTransformer": {
+                  "InputPathsMap": {
+                    "eventSource": "$.detail.eventSource",
+                    "eventName": "$.detail.eventName",
+                    "principal": "$.detail.userIdentity.arn",
+                    "principalType": "$.detail.userIdentity.type",
+                    "sourceIPAddress": "$.detail.sourceIPAddress",
+                    "region": "$.region",
+                    "time": "$.time",
+                    "errorCode": "$.detail.errorCode",
+                    "eventId": "$.detail.eventID",
+                    "account": "$.account"
+                  },
+                  "InputTemplate": {
+                    "Fn::Sub": "[aws-breach-alarms] HIGH R5 defense-evasion: Logging or threat detection was switched off\n\nWhat : <eventSource> <eventName>\nWho  : <principal> (<principalType>)\nFrom : <sourceIPAddress> (<region>)\nWhen : <time>\nError: <errorCode>\nAcct : <account>\nEvent: <eventId>\n\nWhy it matters: Attackers disable CloudTrail, GuardDuty, Config and flow logs to hide what they do next.\nRunbook: ${RunbookUrl}#r5-defense-evasion"
+                  }
+                }
+              },
+              {
+                "Id": "forward",
+                "Arn": {
+                  "Fn::Sub": "arn:${AWS::Partition}:events:${HomeRegion}:${AWS::AccountId}:event-bus/default"
+                },
+                "RoleArn": {
+                  "Fn::GetAtt": [
+                    "ForwarderRole",
+                    "Arn"
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "RuleAlarmTamper": {
+      "Type": "AWS::Events::Rule",
+      "Condition": "CreateAlarmTamper",
+      "Properties": {
+        "Name": {
+          "Fn::Sub": "${NamePrefix}-r5b-alarm-tamper"
+        },
+        "Description": "[aws-breach-alarms] R5b: These breach alarms were modified",
+        "State": "ENABLED",
+        "EventPattern": {
+          "detail-type": [
+            "AWS API Call via CloudTrail"
+          ],
+          "detail": {
+            "$or": [
+              {
+                "eventSource": [
+                  "events.amazonaws.com"
+                ],
+                "eventName": [
+                  "DeleteRule",
+                  "DisableRule",
+                  "PutRule"
+                ],
+                "requestParameters": {
+                  "name": [
+                    {
+                      "prefix": {
+                        "Ref": "NamePrefix"
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "eventSource": [
+                  "events.amazonaws.com"
+                ],
+                "eventName": [
+                  "RemoveTargets",
+                  "PutTargets"
+                ],
+                "requestParameters": {
+                  "rule": [
+                    {
+                      "prefix": {
+                        "Ref": "NamePrefix"
+                      }
+                    }
+                  ]
+                }
+              },
+              {
+                "eventSource": [
+                  "sns.amazonaws.com"
+                ],
+                "eventName": [
+                  "DeleteTopic",
+                  "SetTopicAttributes",
+                  "RemovePermission",
+                  "AddPermission"
+                ],
+                "requestParameters": {
+                  "topicArn": [
+                    {
+                      "Fn::If": [
+                        "IsHome",
+                        {
+                          "Ref": "AlertTopic"
+                        },
+                        "__none__"
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "eventSource": [
+                  "sns.amazonaws.com"
+                ],
+                "eventName": [
+                  "Unsubscribe"
+                ],
+                "requestParameters": {
+                  "subscriptionArn": [
+                    {
+                      "prefix": {
+                        "Fn::If": [
+                          "IsHome",
+                          {
+                            "Ref": "AlertTopic"
+                          },
+                          "__none__"
+                        ]
+                      }
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        "Targets": [
+          {
+            "Fn::If": [
+              "IsHome",
+              {
+                "Id": "alert",
+                "Arn": {
+                  "Ref": "AlertTopic"
+                },
+                "DeadLetterConfig": {
+                  "Arn": {
+                    "Fn::GetAtt": [
+                      "DeadLetterQueue",
+                      "Arn"
+                    ]
+                  }
+                },
+                "InputTransformer": {
+                  "InputPathsMap": {
+                    "eventSource": "$.detail.eventSource",
+                    "eventName": "$.detail.eventName",
+                    "principal": "$.detail.userIdentity.arn",
+                    "principalType": "$.detail.userIdentity.type",
+                    "sourceIPAddress": "$.detail.sourceIPAddress",
+                    "region": "$.region",
+                    "time": "$.time",
+                    "errorCode": "$.detail.errorCode",
+                    "eventId": "$.detail.eventID",
+                    "account": "$.account"
+                  },
+                  "InputTemplate": {
+                    "Fn::Sub": "[aws-breach-alarms] HIGH R5b alarm-tamper: These breach alarms were modified\n\nWhat : <eventSource> <eventName>\nWho  : <principal> (<principalType>)\nFrom : <sourceIPAddress> (<region>)\nWhen : <time>\nError: <errorCode>\nAcct : <account>\nEvent: <eventId>\n\nWhy it matters: Removing the alert rules or unsubscribing the alert email silences every other alarm. Expect this alert when you redeploy the module yourself.\nRunbook: ${RunbookUrl}#r5b-alarm-tamper"
+                  }
+                }
+              },
+              {
+                "Id": "forward",
+                "Arn": {
+                  "Fn::Sub": "arn:${AWS::Partition}:events:${HomeRegion}:${AWS::AccountId}:event-bus/default"
+                },
+                "RoleArn": {
+                  "Fn::GetAtt": [
+                    "ForwarderRole",
+                    "Arn"
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "RuleExfilPrep": {
+      "Type": "AWS::Events::Rule",
+      "Condition": "CreateExfilPrep",
+      "Properties": {
+        "Name": {
+          "Fn::Sub": "${NamePrefix}-r6-exfil-prep"
+        },
+        "Description": "[aws-breach-alarms] R6: Data sharing or key destruction",
+        "State": "ENABLED",
+        "EventPattern": {
+          "detail-type": [
+            "AWS API Call via CloudTrail"
+          ],
+          "detail": {
+            "userIdentity": {
+              "arn": [
+                {
+                  "anything-but": {
+                    "wildcard": {
+                      "Fn::If": [
+                        "HasDeployerPrincipalPatterns",
+                        {
+                          "Ref": "DeployerPrincipalPatterns"
+                        },
+                        [
+                          "__none__"
+                        ]
+                      ]
+                    }
+                  }
+                }
+              ]
+            },
+            "$or": [
+              {
+                "eventSource": [
+                  "ec2.amazonaws.com"
+                ],
+                "eventName": [
+                  "ModifySnapshotAttribute",
+                  "ModifyImageAttribute"
+                ]
+              },
+              {
+                "eventSource": [
+                  "rds.amazonaws.com"
+                ],
+                "eventName": [
+                  "ModifyDBSnapshotAttribute",
+                  "ModifyDBClusterSnapshotAttribute"
+                ]
+              },
+              {
+                "eventSource": [
+                  "s3.amazonaws.com"
+                ],
+                "eventName": [
+                  "PutBucketPolicy",
+                  "PutBucketAcl",
+                  "DeleteBucketPolicy",
+                  "PutBucketPublicAccessBlock",
+                  "DeleteBucketPublicAccessBlock",
+                  "PutAccountPublicAccessBlock",
+                  "DeleteAccountPublicAccessBlock"
+                ]
+              },
+              {
+                "eventSource": [
+                  "kms.amazonaws.com"
+                ],
+                "eventName": [
+                  "ScheduleKeyDeletion",
+                  "DisableKey",
+                  "PutKeyPolicy"
+                ]
+              }
+            ]
+          }
+        },
+        "Targets": [
+          {
+            "Fn::If": [
+              "IsHome",
+              {
+                "Id": "alert",
+                "Arn": {
+                  "Ref": "AlertTopic"
+                },
+                "DeadLetterConfig": {
+                  "Arn": {
+                    "Fn::GetAtt": [
+                      "DeadLetterQueue",
+                      "Arn"
+                    ]
+                  }
+                },
+                "InputTransformer": {
+                  "InputPathsMap": {
+                    "eventSource": "$.detail.eventSource",
+                    "eventName": "$.detail.eventName",
+                    "principal": "$.detail.userIdentity.arn",
+                    "principalType": "$.detail.userIdentity.type",
+                    "sourceIPAddress": "$.detail.sourceIPAddress",
+                    "region": "$.region",
+                    "time": "$.time",
+                    "errorCode": "$.detail.errorCode",
+                    "eventId": "$.detail.eventID",
+                    "account": "$.account"
+                  },
+                  "InputTemplate": {
+                    "Fn::Sub": "[aws-breach-alarms] HIGH R6 exfil-prep: Data sharing or key destruction\n\nWhat : <eventSource> <eventName>\nWho  : <principal> (<principalType>)\nFrom : <sourceIPAddress> (<region>)\nWhen : <time>\nError: <errorCode>\nAcct : <account>\nEvent: <eventId>\n\nWhy it matters: Sharing snapshots or images with another account, opening bucket policies, or destroying KMS keys are common ways to take data out or hold it to ransom.\nRunbook: ${RunbookUrl}#r6-exfil-prep"
+                  }
+                }
+              },
+              {
+                "Id": "forward",
+                "Arn": {
+                  "Fn::Sub": "arn:${AWS::Partition}:events:${HomeRegion}:${AWS::AccountId}:event-bus/default"
+                },
+                "RoleArn": {
+                  "Fn::GetAtt": [
+                    "ForwarderRole",
+                    "Arn"
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "RuleConsoleSignin": {
+      "Type": "AWS::Events::Rule",
+      "Condition": "CreateConsoleSignin",
+      "Properties": {
+        "Name": {
+          "Fn::Sub": "${NamePrefix}-r7-console-signin"
+        },
+        "Description": "[aws-breach-alarms] R7: Risky console sign-in",
+        "State": "ENABLED",
+        "EventPattern": {
+          "detail-type": [
+            "AWS Console Sign In via CloudTrail",
+            "AWS Console Signin via CloudTrail"
+          ],
+          "detail": {
+            "eventName": [
+              "ConsoleLogin"
+            ],
+            "$or": [
+              {
+                "userIdentity": {
+                  "type": [
+                    "Root"
+                  ]
+                }
+              },
+              {
+                "responseElements": {
+                  "ConsoleLogin": [
+                    "Failure"
+                  ]
+                }
+              },
+              {
+                "userIdentity": {
+                  "type": [
+                    "IAMUser"
+                  ]
+                },
+                "additionalEventData": {
+                  "MFAUsed": [
+                    "No"
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        "Targets": [
+          {
+            "Fn::If": [
+              "IsHome",
+              {
+                "Id": "alert",
+                "Arn": {
+                  "Ref": "AlertTopic"
+                },
+                "DeadLetterConfig": {
+                  "Arn": {
+                    "Fn::GetAtt": [
+                      "DeadLetterQueue",
+                      "Arn"
+                    ]
+                  }
+                },
+                "InputTransformer": {
+                  "InputPathsMap": {
+                    "eventSource": "$.detail.eventSource",
+                    "eventName": "$.detail.eventName",
+                    "principal": "$.detail.userIdentity.arn",
+                    "principalType": "$.detail.userIdentity.type",
+                    "sourceIPAddress": "$.detail.sourceIPAddress",
+                    "region": "$.region",
+                    "time": "$.time",
+                    "errorCode": "$.detail.errorCode",
+                    "eventId": "$.detail.eventID",
+                    "account": "$.account"
+                  },
+                  "InputTemplate": {
+                    "Fn::Sub": "[aws-breach-alarms] HIGH R7 console-signin: Risky console sign-in\n\nWhat : <eventSource> <eventName>\nWho  : <principal> (<principalType>)\nFrom : <sourceIPAddress> (<region>)\nWhen : <time>\nError: <errorCode>\nAcct : <account>\nEvent: <eventId>\n\nWhy it matters: Root sign-ins, failed sign-ins and IAM user sign-ins without MFA are the usual signs of account takeover attempts.\nRunbook: ${RunbookUrl}#r7-console-signin"
+                  }
+                }
+              },
+              {
+                "Id": "forward",
+                "Arn": {
+                  "Fn::Sub": "arn:${AWS::Partition}:events:${HomeRegion}:${AWS::AccountId}:event-bus/default"
+                },
+                "RoleArn": {
+                  "Fn::GetAtt": [
+                    "ForwarderRole",
+                    "Arn"
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "Outputs": {
+    "AlertTopicArn": {
+      "Condition": "IsHome",
+      "Value": {
+        "Ref": "AlertTopic"
+      }
+    },
+    "DeadLetterQueueArn": {
+      "Condition": "IsHome",
+      "Value": {
+        "Fn::GetAtt": [
+          "DeadLetterQueue",
+          "Arn"
+        ]
+      }
+    },
+    "ForwarderRoleArn": {
+      "Condition": "IsForwarder",
+      "Value": {
+        "Fn::GetAtt": [
+          "ForwarderRole",
+          "Arn"
+        ]
+      }
+    }
+  }
+}
