@@ -4,7 +4,7 @@
 
 Near-zero-cost AWS breach alarms: CloudTrail → EventBridge → SNS email. No Lambda, no servers, under $1/month.
 
-> Status: v0.1, pre-release. Patterns are verified against the EventBridge API. A deployment test in a live account is still pending.
+> Status: v0.1.0. Patterns are verified against the EventBridge API, and the stacks are running in production accounts.
 
 Born from a real incident where an attacker stole EC2 instance-role credentials via SSRF (IMDSv1) and operated for four days without a single alert, even though every step was recorded in CloudTrail.
 
