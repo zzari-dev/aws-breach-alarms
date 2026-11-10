@@ -49,11 +49,12 @@ locals {
     "\"@@deployer_principal_patterns@@\"", coalesce(local.encoded.deployer_principal_patterns, jsonencode([local.sentinel])))
   }
 
-  messages = { for slug, r in local.event_rules : slug => replace(replace(replace(replace(replace(replace(replace(
-    join("\n", local.message.template),
-    "{severity}", r.severity), "{id}", r.id), "{slug}", r.slug), "{title}", r.title), "{why}", r.why),
-    "{runbook_url}", local.runbook_url), "{anchor}", "${lower(r.id)}-${r.slug}")
-  }
+  # Each line is its own quoted string: EventBridge reads InputTemplate as JSON.
+  messages = { for slug, r in local.event_rules : slug => join("\n", [for line in local.message.template :
+    format("\"%s\"", replace(replace(replace(replace(replace(replace(replace(replace(line,
+      "{severity}", r.severity), "{id}", r.id), "{slug}", r.slug), "{title}", r.title), "{why}", r.why),
+    "{runbook_url}", local.runbook_url), "{anchor}", "${lower(r.id)}-${r.slug}"), "\"", "\\\""))
+  ]) }
 }
 
 resource "aws_cloudwatch_event_rule" "this" {

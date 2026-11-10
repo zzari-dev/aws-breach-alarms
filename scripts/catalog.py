@@ -63,8 +63,11 @@ def anchor(rule):
 
 
 def message_template(rule, runbook_url):
+    """Plain-text alert. EventBridge reads InputTemplate as JSON, so each line is its own quoted string."""
     fields = {**rule, "runbook_url": runbook_url, "anchor": anchor(rule)}
-    text = "\n".join(MESSAGE["template"])
-    for key in ("severity", "id", "slug", "title", "why", "runbook_url", "anchor"):
-        text = text.replace("{" + key + "}", fields[key])
-    return text
+    lines = []
+    for line in MESSAGE["template"]:
+        for key in ("severity", "id", "slug", "title", "why", "runbook_url", "anchor"):
+            line = line.replace("{" + key + "}", fields[key])
+        lines.append('"' + line.replace('"', '\\"') + '"')
+    return "\n".join(lines)

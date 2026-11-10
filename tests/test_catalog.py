@@ -38,8 +38,9 @@ def test_every_parameter_token_in_a_pattern_is_declared():
 def test_alert_message_names_the_rule_and_links_its_runbook():
     rule = _rule("remote-exec")
     message = catalog.message_template(rule, "https://example.com/runbook.md")
-    assert message.splitlines()[0] == "HIGH R3 remote-exec: " + rule["title"]
-    assert "aws-breach-alarms" in message.splitlines()[1]
+    lines = [line[1:-1] for line in message.splitlines()]
+    assert lines[0] == "HIGH R3 remote-exec: " + rule["title"]
+    assert "aws-breach-alarms" in lines[1]
     assert "https://example.com/runbook.md#r3-remote-exec" in message
     assert "<eventName>" in message and "<sourceIPAddress>" in message
 
@@ -60,7 +61,9 @@ def test_every_alert_links_to_an_existing_runbook_section_in_both_languages():
             assert catalog.anchor(rule) in headings, f"{name} lacks a section for {rule['id']} {rule['slug']}"
 
 
-def test_alert_message_is_plain_text_for_eventbridge():
-    # EventBridge parses an InputTemplate starting with "[" or "{" as JSON and rejects the target.
+def test_alert_message_quotes_every_line_as_eventbridge_requires_for_text():
+    # EventBridge parses InputTemplate as JSON; multi-line text must be one quoted string per line.
     for rule in catalog.load_rules():
-        assert catalog.message_template(rule, "https://example.com")[0] not in "[{\"", rule["slug"]
+        for line in catalog.message_template(rule, "https://example.com").splitlines():
+            assert line.startswith('"') and line.endswith('"'), (rule["slug"], line)
+            assert '"' not in line[1:-1].replace('\\"', ""), (rule["slug"], line)

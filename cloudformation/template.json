@@ -756,7 +756,7 @@
                     "account": "$.account"
                   },
                   "InputTemplate": {
-                    "Fn::Sub": "HIGH R1 role-denied: Monitored role was denied access\nAlert from aws-breach-alarms\n\nWhat : <eventSource> <eventName>\nWho  : <principal> (<principalType>)\nFrom : <sourceIPAddress> (<region>)\nWhen : <time>\nError: <errorCode>\nAcct : <account>\nEvent: <eventId>\n\nWhy it matters: Healthy workloads rarely hit authorization errors. With a deny-outside-VPC policy on the role, stolen credentials used elsewhere always end in AccessDenied.\nRunbook: ${RunbookUrl}#r1-role-denied"
+                    "Fn::Sub": "\"HIGH R1 role-denied: Monitored role was denied access\"\n\"Alert from aws-breach-alarms\"\n\"\"\n\"What : <eventSource> <eventName>\"\n\"Who  : <principal> (<principalType>)\"\n\"From : <sourceIPAddress> (<region>)\"\n\"When : <time>\"\n\"Error: <errorCode>\"\n\"Acct : <account>\"\n\"Event: <eventId>\"\n\"\"\n\"Why it matters: Healthy workloads rarely hit authorization errors. With a deny-outside-VPC policy on the role, stolen credentials used elsewhere always end in AccessDenied.\"\n\"Runbook: ${RunbookUrl}#r1-role-denied\""
                   }
                 }
               },
@@ -853,7 +853,7 @@
                     "account": "$.account"
                   },
                   "InputTemplate": {
-                    "Fn::Sub": "HIGH R2 role-offsite: Monitored role used from an unexpected source\nAlert from aws-breach-alarms\n\nWhat : <eventSource> <eventName>\nWho  : <principal> (<principalType>)\nFrom : <sourceIPAddress> (<region>)\nWhen : <time>\nError: <errorCode>\nAcct : <account>\nEvent: <eventId>\n\nWhy it matters: Instance and task role credentials should only be used from your own network. A call from anywhere else usually means the credentials were stolen, for example through SSRF against the instance metadata service.\nRunbook: ${RunbookUrl}#r2-role-offsite"
+                    "Fn::Sub": "\"HIGH R2 role-offsite: Monitored role used from an unexpected source\"\n\"Alert from aws-breach-alarms\"\n\"\"\n\"What : <eventSource> <eventName>\"\n\"Who  : <principal> (<principalType>)\"\n\"From : <sourceIPAddress> (<region>)\"\n\"When : <time>\"\n\"Error: <errorCode>\"\n\"Acct : <account>\"\n\"Event: <eventId>\"\n\"\"\n\"Why it matters: Instance and task role credentials should only be used from your own network. A call from anywhere else usually means the credentials were stolen, for example through SSRF against the instance metadata service.\"\n\"Runbook: ${RunbookUrl}#r2-role-offsite\""
                   }
                 }
               },
@@ -958,7 +958,7 @@
                     "account": "$.account"
                   },
                   "InputTemplate": {
-                    "Fn::Sub": "HIGH R3 remote-exec: Remote command execution by an untrusted principal\nAlert from aws-breach-alarms\n\nWhat : <eventSource> <eventName>\nWho  : <principal> (<principalType>)\nFrom : <sourceIPAddress> (<region>)\nWhen : <time>\nError: <errorCode>\nAcct : <account>\nEvent: <eventId>\n\nWhy it matters: SSM Run Command, Session Manager and ECS Exec give shell access to your servers and containers. Attackers holding stolen credentials use them to move to every host.\nRunbook: ${RunbookUrl}#r3-remote-exec"
+                    "Fn::Sub": "\"HIGH R3 remote-exec: Remote command execution by an untrusted principal\"\n\"Alert from aws-breach-alarms\"\n\"\"\n\"What : <eventSource> <eventName>\"\n\"Who  : <principal> (<principalType>)\"\n\"From : <sourceIPAddress> (<region>)\"\n\"When : <time>\"\n\"Error: <errorCode>\"\n\"Acct : <account>\"\n\"Event: <eventId>\"\n\"\"\n\"Why it matters: SSM Run Command, Session Manager and ECS Exec give shell access to your servers and containers. Attackers holding stolen credentials use them to move to every host.\"\n\"Runbook: ${RunbookUrl}#r3-remote-exec\""
                   }
                 }
               },
@@ -1077,7 +1077,7 @@
                     "account": "$.account"
                   },
                   "InputTemplate": {
-                    "Fn::Sub": "HIGH R4 iam-persistence: IAM change that can create a backdoor\nAlert from aws-breach-alarms\n\nWhat : <eventSource> <eventName>\nWho  : <principal> (<principalType>)\nFrom : <sourceIPAddress> (<region>)\nWhen : <time>\nError: <errorCode>\nAcct : <account>\nEvent: <eventId>\n\nWhy it matters: New users, access keys, login profiles, trust policy edits and policy attachments are how attackers keep access after the original hole is closed.\nRunbook: ${RunbookUrl}#r4-iam-persistence"
+                    "Fn::Sub": "\"HIGH R4 iam-persistence: IAM change that can create a backdoor\"\n\"Alert from aws-breach-alarms\"\n\"\"\n\"What : <eventSource> <eventName>\"\n\"Who  : <principal> (<principalType>)\"\n\"From : <sourceIPAddress> (<region>)\"\n\"When : <time>\"\n\"Error: <errorCode>\"\n\"Acct : <account>\"\n\"Event: <eventId>\"\n\"\"\n\"Why it matters: New users, access keys, login profiles, trust policy edits and policy attachments are how attackers keep access after the original hole is closed.\"\n\"Runbook: ${RunbookUrl}#r4-iam-persistence\""
                   }
                 }
               },
@@ -1212,7 +1212,7 @@
                     "account": "$.account"
                   },
                   "InputTemplate": {
-                    "Fn::Sub": "HIGH R5 defense-evasion: Logging or threat detection was switched off\nAlert from aws-breach-alarms\n\nWhat : <eventSource> <eventName>\nWho  : <principal> (<principalType>)\nFrom : <sourceIPAddress> (<region>)\nWhen : <time>\nError: <errorCode>\nAcct : <account>\nEvent: <eventId>\n\nWhy it matters: Attackers disable CloudTrail, GuardDuty, Config and flow logs to hide what they do next.\nRunbook: ${RunbookUrl}#r5-defense-evasion"
+                    "Fn::Sub": "\"HIGH R5 defense-evasion: Logging or threat detection was switched off\"\n\"Alert from aws-breach-alarms\"\n\"\"\n\"What : <eventSource> <eventName>\"\n\"Who  : <principal> (<principalType>)\"\n\"From : <sourceIPAddress> (<region>)\"\n\"When : <time>\"\n\"Error: <errorCode>\"\n\"Acct : <account>\"\n\"Event: <eventId>\"\n\"\"\n\"Why it matters: Attackers disable CloudTrail, GuardDuty, Config and flow logs to hide what they do next.\"\n\"Runbook: ${RunbookUrl}#r5-defense-evasion\""
                   }
                 }
               },
@@ -1390,7 +1390,7 @@
                     "account": "$.account"
                   },
                   "InputTemplate": {
-                    "Fn::Sub": "HIGH R5b alarm-tamper: These breach alarms were modified\nAlert from aws-breach-alarms\n\nWhat : <eventSource> <eventName>\nWho  : <principal> (<principalType>)\nFrom : <sourceIPAddress> (<region>)\nWhen : <time>\nError: <errorCode>\nAcct : <account>\nEvent: <eventId>\n\nWhy it matters: Removing the alert rules or unsubscribing the alert email silences every other alarm. Expect this alert when you redeploy the module yourself.\nRunbook: ${RunbookUrl}#r5b-alarm-tamper"
+                    "Fn::Sub": "\"HIGH R5b alarm-tamper: These breach alarms were modified\"\n\"Alert from aws-breach-alarms\"\n\"\"\n\"What : <eventSource> <eventName>\"\n\"Who  : <principal> (<principalType>)\"\n\"From : <sourceIPAddress> (<region>)\"\n\"When : <time>\"\n\"Error: <errorCode>\"\n\"Acct : <account>\"\n\"Event: <eventId>\"\n\"\"\n\"Why it matters: Removing the alert rules or unsubscribing the alert email silences every other alarm. Expect this alert when you redeploy the module yourself.\"\n\"Runbook: ${RunbookUrl}#r5b-alarm-tamper\""
                   }
                 }
               },
@@ -1529,7 +1529,7 @@
                     "account": "$.account"
                   },
                   "InputTemplate": {
-                    "Fn::Sub": "HIGH R6 exfil-prep: Data sharing or key destruction\nAlert from aws-breach-alarms\n\nWhat : <eventSource> <eventName>\nWho  : <principal> (<principalType>)\nFrom : <sourceIPAddress> (<region>)\nWhen : <time>\nError: <errorCode>\nAcct : <account>\nEvent: <eventId>\n\nWhy it matters: Sharing snapshots or images with another account, opening bucket policies, or destroying KMS keys are common ways to take data out or hold it to ransom.\nRunbook: ${RunbookUrl}#r6-exfil-prep"
+                    "Fn::Sub": "\"HIGH R6 exfil-prep: Data sharing or key destruction\"\n\"Alert from aws-breach-alarms\"\n\"\"\n\"What : <eventSource> <eventName>\"\n\"Who  : <principal> (<principalType>)\"\n\"From : <sourceIPAddress> (<region>)\"\n\"When : <time>\"\n\"Error: <errorCode>\"\n\"Acct : <account>\"\n\"Event: <eventId>\"\n\"\"\n\"Why it matters: Sharing snapshots or images with another account, opening bucket policies, or destroying KMS keys are common ways to take data out or hold it to ransom.\"\n\"Runbook: ${RunbookUrl}#r6-exfil-prep\""
                   }
                 }
               },
@@ -1637,7 +1637,7 @@
                     "account": "$.account"
                   },
                   "InputTemplate": {
-                    "Fn::Sub": "HIGH R7 console-signin: Risky console sign-in\nAlert from aws-breach-alarms\n\nWhat : <eventSource> <eventName>\nWho  : <principal> (<principalType>)\nFrom : <sourceIPAddress> (<region>)\nWhen : <time>\nError: <errorCode>\nAcct : <account>\nEvent: <eventId>\n\nWhy it matters: Root sign-ins, failed sign-ins and IAM user sign-ins without MFA are the usual signs of account takeover attempts.\nRunbook: ${RunbookUrl}#r7-console-signin"
+                    "Fn::Sub": "\"HIGH R7 console-signin: Risky console sign-in\"\n\"Alert from aws-breach-alarms\"\n\"\"\n\"What : <eventSource> <eventName>\"\n\"Who  : <principal> (<principalType>)\"\n\"From : <sourceIPAddress> (<region>)\"\n\"When : <time>\"\n\"Error: <errorCode>\"\n\"Acct : <account>\"\n\"Event: <eventId>\"\n\"\"\n\"Why it matters: Root sign-ins, failed sign-ins and IAM user sign-ins without MFA are the usual signs of account takeover attempts.\"\n\"Runbook: ${RunbookUrl}#r7-console-signin\""
                   }
                 }
               },
