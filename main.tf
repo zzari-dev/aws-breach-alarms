@@ -10,7 +10,7 @@ locals {
 
   is_home     = var.mode == "home"
   name_prefix = coalesce(var.name_prefix, local.defaults.name_prefix)
-  runbook_url = coalesce(var.runbook_url, local.defaults.runbook_url)
+  runbook_url = var.runbook_url == null ? local.defaults.runbook_url : var.runbook_url # "" omits the runbook line
   operators   = var.operator_principal_patterns == null ? local.defaults.operator_principal_patterns : var.operator_principal_patterns
 
   # Each @@token@@ in a pattern becomes this JSON text. "" marks an empty value.
@@ -54,6 +54,7 @@ locals {
     format("\"%s\"", replace(replace(replace(replace(replace(replace(replace(replace(line,
       "{severity}", r.severity), "{id}", r.id), "{slug}", r.slug), "{title}", r.title), "{why}", r.why),
     "{runbook_url}", local.runbook_url), "{anchor}", "${lower(r.id)}-${r.slug}"), "\"", "\\\""))
+    if !(local.runbook_url == "" && strcontains(line, "{runbook_url}"))
   ]) }
 }
 

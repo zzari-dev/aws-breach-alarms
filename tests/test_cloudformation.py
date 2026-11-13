@@ -102,3 +102,15 @@ def test_home_stack_can_reuse_an_existing_topic(test_config):
     expected = catalog.render_pattern(tamper, catalog.with_defaults({**test_config, "alert_topic_arn": EXISTING}))
     assert stack.eval(rules["breach-alarms-r5b-alarm-tamper"]["Properties"]["EventPattern"]) == expected
     assert stack.eval(stack.t["Resources"]["DeliveryFailureAlarm"]["Properties"]["AlarmActions"]) == [EXISTING]
+
+
+def test_home_stack_omits_the_runbook_line_when_runbook_url_is_empty(test_config):
+    stack = Stack(build_cfn.build(), _params(test_config, RunbookUrl=""), REFS)
+    rule = next(r for r in catalog.load_rules() if r["slug"] == "remote-exec")
+    target = stack.eval(_rule_resources(stack)["breach-alarms-r3-remote-exec"]["Properties"]["Targets"])[0]
+    assert target["InputTransformer"]["InputTemplate"] == catalog.message_template(rule, "")
+
+
+def test_committed_template_fits_the_direct_upload_limit():
+    # `aws cloudformation deploy` without --s3-bucket accepts at most 51,200 bytes.
+    assert TEMPLATE.stat().st_size <= 51200

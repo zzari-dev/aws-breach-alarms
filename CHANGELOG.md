@@ -1,5 +1,13 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- An empty `runbook_url` / `RunbookUrl` omits the runbook line from alerts (for teams that keep the runbook internally).
+
+### Changed
+- `cloudformation/template.json` is written with one-space indentation so it stays under the 51,200-byte limit for `aws cloudformation deploy` without `--s3-bucket`.
+
 ## [0.1.0] - 2026-11-11
 
 ### Added

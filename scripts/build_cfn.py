@@ -59,7 +59,7 @@ def _parameters(defaults, rules):
         "AlertEmail": {"Type": "String", "Default": "", "Description": "Home only: email address that receives alerts (confirm the subscription once). Ignored with ExistingTopicArn."},
         "ExistingTopicArn": {"Type": "String", "Default": "",
                              "Description": "Home only: send alerts to this existing SNS topic instead of creating one. Its policy must allow events.amazonaws.com and cloudwatch.amazonaws.com to sns:Publish."},
-        "RunbookUrl": {"Type": "String", "Default": defaults["runbook_url"], "Description": "Base URL of the runbook linked from alerts."},
+        "RunbookUrl": {"Type": "String", "Default": defaults["runbook_url"], "Description": "Base URL of the runbook linked from alerts. Empty omits the runbook line."},
     }
     for name, description in LIST_PARAMS.items():
         params[camel(name)] = {"Type": "CommaDelimitedList", "Default": ",".join(defaults[name]), "Description": description}
@@ -83,6 +83,7 @@ def _conditions(rules):
         "CreateTopic": {"Fn::And": [{"Condition": "IsHome"}, {"Fn::Not": [{"Condition": "UseExistingTopic"}]}]},
         "HasAlertEmail": {"Fn::And": [{"Condition": "CreateTopic"}, {"Fn::Not": [{"Fn::Equals": [{"Ref": "AlertEmail"}, ""]}]}]},
         "HasKms": {"Fn::Not": [{"Fn::Equals": [{"Ref": "KmsKeyArn"}, ""]}]},
+        "HasRunbookUrl": {"Fn::Not": [{"Fn::Equals": [{"Ref": "RunbookUrl"}, ""]}]},
         "HasWafAlarm": {"Fn::And": [
             {"Condition": "IsHome"},
             {"Fn::Not": [{"Fn::Equals": [{"Ref": "WafWebAclName"}, ""]}]},
@@ -107,7 +108,9 @@ def _rule_resource(rule):
         "InputTransformer": {
             "InputPathsMap": catalog.INPUT_PATHS,
             # Fn::Sub fills ${RunbookUrl} only; EventBridge fills the <placeholders>.
-            "InputTemplate": {"Fn::Sub": catalog.message_template(rule, "${RunbookUrl}")},
+            "InputTemplate": {"Fn::If": ["HasRunbookUrl",
+                                         {"Fn::Sub": catalog.message_template(rule, "${RunbookUrl}")},
+                                         catalog.message_template(rule, "")]},
         },
     }
     forward_target = {
@@ -239,5 +242,5 @@ def build():
 
 if __name__ == "__main__":
     OUT.parent.mkdir(exist_ok=True)
-    OUT.write_text(json.dumps(build(), indent=2) + "\n")
+    OUT.write_text(json.dumps(build(), indent=1) + "\n")
     print(f"wrote {OUT}")

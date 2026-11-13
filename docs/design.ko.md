@@ -216,7 +216,7 @@ Runbook: https://github.com/<org>/aws-breach-alarms/blob/main/docs/runbook.md#r3
 | `allowed_source_patterns` | list(string) | `[]` | R2 허용 출발지 와일드카드 |
 | `operator_principal_patterns` | list(string) | SSO·SSM State Manager 역할 | 원격 명령을 실행해도 되는 주체 (R3) |
 | `deployer_principal_patterns` | list(string) | `[]` | IAM·공유 변경이 예상되는 배포 주체 (R4, R6) |
-| `runbook_url` | string | 이 저장소의 런북 | 알림에 붙는 런북 주소 |
+| `runbook_url` | string | 이 저장소의 런북 | 알림에 붙는 런북 주소. `""`이면 런북 줄을 뺀다 |
 | `waf_alarms` | list(object) | `[]` | R8: `{ web_acl, rule, threshold }` |
 | `kms_key_arn` | string | `null` | SNS와 SQS 암호화용 키 (선택) |
 | `tags` | map(string) | `{}` | 공통 태그 |

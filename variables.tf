@@ -58,7 +58,7 @@ variable "deployer_principal_patterns" {
 }
 
 variable "runbook_url" {
-  description = "Base URL of the runbook linked from alerts. null uses the project's runbook."
+  description = "Base URL of the runbook linked from alerts. null uses the project's runbook; \"\" omits the runbook line."
   type        = string
   default     = null
 }

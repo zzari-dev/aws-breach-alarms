@@ -124,3 +124,10 @@ def test_home_can_reuse_an_existing_topic_without_touching_it(existing_topic_pla
     tamper = next(r for r in catalog.load_rules() if r["slug"] == "alarm-tamper")
     after = _resources(existing_topic_plan, "aws_cloudwatch_event_rule")["alarm-tamper"]["change"]["after"]
     assert json.loads(after["event_pattern"]) == catalog.render_pattern(tamper, catalog.with_defaults({**test_config, "alert_topic_arn": EXISTING}))
+
+
+def test_home_omits_the_runbook_line_when_runbook_url_is_empty(tmp_path, test_config):
+    plan = _plan(tmp_path, _module_args(test_config, runbook_url=""))
+    rule = next(r for r in catalog.load_rules() if r["slug"] == "remote-exec")
+    transformer = _resources(plan, "aws_cloudwatch_event_target")["remote-exec"]["change"]["after"]["input_transformer"][0]
+    assert transformer["input_template"] == catalog.message_template(rule, "")

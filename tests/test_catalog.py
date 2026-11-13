@@ -67,3 +67,10 @@ def test_alert_message_quotes_every_line_as_eventbridge_requires_for_text():
         for line in catalog.message_template(rule, "https://example.com").splitlines():
             assert line.startswith('"') and line.endswith('"'), (rule["slug"], line)
             assert '"' not in line[1:-1].replace('\\"', ""), (rule["slug"], line)
+
+
+def test_alert_message_omits_the_runbook_line_when_no_url_is_given():
+    rule = _rule("remote-exec")
+    lines = catalog.message_template(rule, "").splitlines()
+    assert not any("Runbook" in line for line in lines)
+    assert all(line.startswith('"') and line.endswith('"') for line in lines)

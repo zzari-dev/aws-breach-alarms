@@ -67,6 +67,8 @@ def message_template(rule, runbook_url):
     fields = {**rule, "runbook_url": runbook_url, "anchor": anchor(rule)}
     lines = []
     for line in MESSAGE["template"]:
+        if not runbook_url and "{runbook_url}" in line:
+            continue
         for key in ("severity", "id", "slug", "title", "why", "runbook_url", "anchor"):
             line = line.replace("{" + key + "}", fields[key])
         lines.append('"' + line.replace('"', '\\"') + '"')

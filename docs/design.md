@@ -216,7 +216,7 @@ Runbook: https://github.com/<org>/aws-breach-alarms/blob/main/docs/runbook.md#r3
 | `allowed_source_patterns` | list(string) | `[]` | R2 allowed-source wildcards |
 | `operator_principal_patterns` | list(string) | SSO and SSM State Manager roles | Principals allowed to run remote commands (R3) |
 | `deployer_principal_patterns` | list(string) | `[]` | Principals whose IAM/sharing changes are expected (R4, R6) |
-| `runbook_url` | string | this repo's runbook | Base URL linked from alerts |
+| `runbook_url` | string | this repo's runbook | Base URL linked from alerts. `""` omits the runbook line |
 | `waf_alarms` | list(object) | `[]` | R8: `{ web_acl, rule, threshold }` |
 | `kms_key_arn` | string | `null` | Optional key for SNS/SQS encryption |
 | `tags` | map(string) | `{}` | Common tags |
